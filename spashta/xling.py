@@ -41,6 +41,7 @@ _HALANT, _NUKTA = "्", "़"
 _NASAL = {"ं": "n", "ँ": "n", "ः": "h"}
 
 
+@lru_cache(maxsize=200_000)
 def romanize(word: str) -> str:
     """Simplified romanisation of one Devanagari word, as Nepali readers
     type it: no diacritics, inherent 'a' dropped at the end of the word
@@ -88,6 +89,7 @@ _KEY_RULES = [
 ]
 
 
+@lru_cache(maxsize=200_000)
 def phonetic_key(latin: str) -> str:
     key = latin.lower()
     for pattern, repl in _KEY_RULES:

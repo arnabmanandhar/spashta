@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from functools import lru_cache
 
 DEVANAGARI_DIGITS = str.maketrans("०१२३४५६७८९", "0123456789")
 _FOLD = str.maketrans({
@@ -123,6 +124,7 @@ def _stem_ne(word: str) -> str:
     return word
 
 
+@lru_cache(maxsize=200_000)
 def stem(token: str) -> str:
     if is_devanagari(token):
         return _stem_ne(token)

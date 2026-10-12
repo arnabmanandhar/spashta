@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "spashta"
-version = "0.7.0"
+version = "0.8.0"
 description = "News integrity reports for Nepali and English: ingestion, bilingual hybrid retrieval and evidence-backed credibility signals."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -44,3 +44,4 @@ ignore = ["E501", "S101", "B905", "UP007", "UP045", "E731"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S", "B"]
+"benchmarks/*" = ["S"]
