@@ -93,6 +93,7 @@ class Index:
         self.xbm25 = BM25()
         self.vectors = np.zeros((0, 0), dtype=np.float32)
         self.article_source: dict[str, str] = {}
+        self.names: set[str] = set()
         self.reload()
 
     def reload(self) -> None:
@@ -116,6 +117,9 @@ class Index:
         self.vectors = (np.vstack([np.frombuffer(b, dtype=np.float32) for b in blobs])
                         if blobs else np.zeros((0, 1), dtype=np.float32))
         self.article_source = self.store.article_sources()
+        # Proper names learned from English text (capitalisation), as phonetic
+        # keys, so they also recognise the same names written in Devanagari.
+        self.names = set().union(*(xling.name_keys(c.text) for c in chunks)) if chunks else set()
 
     def add(self, article: Article) -> list[Chunk]:
         self.add_many([article])
@@ -171,19 +175,16 @@ class Index:
         return [Hit(self.chunks[i], fused[i], lex_rank.get(i), dense_rank.get(i), float(cos[i]),
                     sorted(q_set & self.terms[i])) for i in ranked]
 
-    def related_articles(self, article: Article, k: int = 5, min_cosine: float = 0.2,
-                         min_shared_terms: int = 3) -> list[tuple[str, list[Hit]]]:
-        """Other outlets' articles about the same story: searched with the
-        headline and lead, excluding the article itself and its own outlet,
-        grouped by article, best first. A hit has to be close in vector
-        space or share enough terms, so unrelated news isn't presented as
-        coverage of the same event."""
+    def candidate_articles(self, article: Article, k: int = 10) -> list[tuple[str, list[Hit]]]:
+        """Articles from other outlets that retrieval ranks close to this
+        one (searched with headline and lead), grouped, best first. These
+        are candidates only: story.same_story decides which report the same
+        event."""
         lead = " ".join(L.sentences(article.body)[:3])
         hits = self.search(f"{article.title} {lead}", k=k * 6, exclude_articles=[article.id],
                            exclude_sources=[article.source] if article.source else [])
         groups: dict[str, list[Hit]] = defaultdict(list)
         for h in hits:
-            if h.cosine >= min_cosine or len(h.matched_terms) >= min_shared_terms:
-                groups[h.chunk.article_id].append(h)
+            groups[h.chunk.article_id].append(h)
         ordered = sorted(groups.items(), key=lambda kv: -max(h.score for h in kv[1]))
         return ordered[:k]

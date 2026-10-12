@@ -46,7 +46,7 @@ class IntegrityReport:
             "score": self.score, "label": self.label,
             "signals": [asdict(s) for s in self.signals],
             "related": [{"url": r.url, "title": r.title, "source": r.source, "lang": r.lang,
-                         "sensationalism": r.sensationalism,
+                         "sensationalism": r.sensationalism, "role": r.role, "reason": r.reason,
                          "passages": [{"id": h.chunk.id, "text": h.chunk.text, "score": round(h.score, 5),
                                        "matched_terms": h.matched_terms} for h in r.passages]} for r in self.related],
             "review": None if self.review is None else {
@@ -65,7 +65,7 @@ class IntegrityReport:
             out.append("")
         if self.related:
             out.append("## Other coverage")
-            out += [f"- [{r.title}]({r.url}) · {r.source} · {r.lang}" for r in self.related]
+            out += [f"- [{r.title}]({r.url}) · {r.source} · {r.lang} · {r.role}" + (f" ({r.reason})" if r.reason else "") for r in self.related]
             out.append("")
         out += ["---", self.disclaimer, "", DISCLAIMER_NE if self.lang == "ne" else ""]
         return "\n".join(out).rstrip() + "\n"

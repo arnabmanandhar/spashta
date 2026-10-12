@@ -128,3 +128,21 @@ in later review rounds are marked with the round that changed them.
    where they would distort term statistics.
 6. A glossary tuned on a benchmark flatters that benchmark, so held-out
    questions are kept separately and reported on their own.
+
+## 8. Same story and independent sources (round 3)
+
+1. Corroboration means "someone else, who didn't copy this, saw the same
+   thing". Retrieval similarity measures neither "same thing" nor
+   "someone else".
+2. "Same thing" in news is an event: a kind of happening plus a specific
+   subject at a time. So the test is structural: shared event type, shared
+   subject, close in time. A similarity threshold was tried first and
+   failed: generic words (district, police, landslide) made two different
+   landslides look more alike than a story and its translation.
+3. Proper names are the strongest cross-language subject signal, but
+   Devanagari has no capitalisation. English text does, so names are
+   learned there and stored as phonetic keys that also match Devanagari.
+4. "Someone else": syndicated copies and same-owner outlets are not
+   independent, so they collapse; commentary is not a witness, so it is
+   listed but not counted.
+5. Each match carries its reason, so a reader can reject a wrong match.

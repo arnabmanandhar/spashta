@@ -1,0 +1,9 @@
+{
+  "_note": "Outlets under common ownership count as one source when judging corroboration. Hosts without an entry are their own group. Add groups only from public ownership information.",
+  "groups": {
+    "kantipur-media": ["ekantipur.com", "kathmandupost.com"],
+    "nagarik-network": ["nagariknews.nagariknetwork.com", "myrepublica.nagariknetwork.com", "nagariknetwork.com"],
+    "onlinekhabar": ["onlinekhabar.com", "english.onlinekhabar.com"],
+    "gorkhapatra-corporation": ["gorkhapatraonline.com", "risingnepaldaily.com"]
+  }
+}
