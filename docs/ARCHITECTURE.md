@@ -53,7 +53,8 @@ round is in [REVIEW_LOG.md](REVIEW_LOG.md).
 | `ingest/__init__.py` | `ingest_source`: list, skip what's seen, fetch, extract, index |
 | `chunk.py` | Headline+lead chunk, then sentence-packed chunks with one sentence of overlap |
 | `embed.py` | `HashingEmbedder` (offline), multilingual-e5 and bge-m3 via sentence-transformers |
-| `retrieve.py` | BM25, dense cosine, RRF fusion, exclusions by article and outlet, related-coverage grouping |
+| `xling.py` | Devanagari romaniser, phonetic keys, bilingual news glossary: the offline cross-language bridge |
+| `retrieve.py` | BM25, cross-language BM25, dense cosine, RRF fusion, exclusions by article and outlet, related-coverage grouping |
 | `store.py` | SQLite: sources, articles, chunks with vectors, seen URLs |
 | `analysis/lexicons.py` | English and Nepali word lists (sensational, attribution, anonymous, loaded, hedges) |
 | `analysis/signals.py` | Deterministic signals with evidence |

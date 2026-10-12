@@ -187,7 +187,7 @@ def build_parser() -> argparse.ArgumentParser:
     e.add_argument("questions", nargs="?")
     e.add_argument("-k", type=int, default=5)
     e.add_argument("--records", help="also write Anchor records (JSONL) here")
-    e.add_argument("--mode", choices=["hybrid", "lexical", "dense"], default="hybrid")
+    e.add_argument("--mode", choices=["hybrid", "lexical", "dense", "xling"], default="hybrid")
     e.add_argument("--compare", action="store_true", help="ablation: lexical vs dense vs hybrid, with significance")
     e.set_defaults(func=cmd_eval)
     return p

@@ -107,3 +107,24 @@ in later review rounds are marked with the round that changed them.
    disclaimer in English and Nepali.
 3. Weights are explicit constants that can be tuned against reviewed
    examples later.
+
+## 7. Cross-language matching offline (round 2)
+
+1. The multilingual embedder is the right tool for cross-language
+   retrieval, but it is a large download and some deployments (CI,
+   small servers, offline use) won't have it. Without it, a Nepali story
+   could never find its English coverage, so corroboration would silently
+   shrink to one language.
+2. What actually crosses languages in news? Proper nouns (places, people,
+   organisations), loanwords (petrol, cricket, bus) and a small, stable
+   vocabulary of event words (landslide, killed, price, increase).
+3. Proper nouns and loanwords are the same sounds in two scripts, so
+   romanising Devanagari and comparing phonetic keys matches them. The
+   same key handles romanised Nepali typed by readers.
+4. The event vocabulary is small enough for a curated glossary; ambiguous
+   words (rate, see) are kept out or accepted knowingly.
+5. These are crude bridges, so they get their own ranking and RRF decides
+   how much they count, rather than mixing them into the lexical index
+   where they would distort term statistics.
+6. A glossary tuned on a benchmark flatters that benchmark, so held-out
+   questions are kept separately and reported on their own.

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "spashta"
-version = "0.2.0"
+version = "0.3.0"
 description = "News integrity reports for Nepali and English: ingestion, bilingual hybrid retrieval and evidence-backed credibility signals."
 readme = "README.md"
 requires-python = ">=3.10"
