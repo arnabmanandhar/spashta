@@ -36,6 +36,7 @@ HEDGES = ("feared", "suspected", "up to", "could", "may", "estimated", "unconfir
           "आशंका", "सम्भावना", "अनुमान", "करिब", "झन्डै", "लगभग", "हुनसक्ने", "हुन सक्ने")
 
 # What a figure can count, most specific first; the nearest one wins.
+# Money and percentages also split into levels and changes (rupee vs rupee_change).
 FACT_KINDS = ("death", "missing", "injured", "house", "wicket", "run", "percent", "litre", "kilometre", "rupee",
               "student", "people", "family")
 WINDOW = 4  # tokens either side
@@ -56,6 +57,29 @@ class Fact:
     def shown(self) -> str:
         v = int(self.value) if self.value == int(self.value) else self.value
         return f"{v}{' (hedged)' if self.hedged else ''}"
+
+
+CHANGEABLE = ("rupee", "percent")
+CHANGE_WINDOW = {"ne": 3, "en": 6}  # English: "raised the price of petrol by Rs 5"
+_NE_CHANGE_PREFIXES = ("बढ", "घट", "वृद्धि", "कटौती")
+
+
+def _is_change(toks: list[str], start: int, end: int) -> bool:
+    """Is this money or percentage figure an increase or cut ("raised by
+    Rs 5", "५ रुपैयाँ बढाएको") rather than a level ("Rs 180", "१८० रुपैयाँमा")?
+    Nepali puts the verb after the amount; English may put it on either
+    side. No other number may sit in between."""
+    devanagari = any(L.is_devanagari(t) for t in toks)
+    w = CHANGE_WINDOW["ne" if devanagari else "en"]
+    after = range(end + 1, min(len(toks), end + 1 + w))
+    before = range(start - 1, max(-1, start - 1 - w), -1)
+    for span in (after,) if devanagari else (after, before):
+        for j in span:
+            if _value(toks[j]) is not None:
+                break
+            if toks[j].startswith(_NE_CHANGE_PREFIXES) or set(xling.concepts(toks[j])) & {"increase", "decrease"}:
+                return True
+    return False
 
 
 def _value(tok: str) -> float | None:
@@ -109,24 +133,44 @@ def extract_facts(text: str) -> list[Fact]:
                     # after the number, which is how both languages name what was counted
                     candidates.append((kinds[j] in ("people", "family"), d, j < start, kinds[j]))
             best = min(candidates)[3] if candidates else None
+            if best in CHANGEABLE and _is_change(toks, start, i):
+                best += "_change"
             if best:
                 facts.append(Fact(best, v, " ".join(toks[max(0, start - 2):i + 3]), hedged_sentence))
             i += 1
     return facts
 
 
+# One true value per story (a death toll); any other value disagrees.
+# Other kinds can legitimately have several values in one story (petrol
+# and diesel prices), so a source disagrees only if it shares none of ours.
+SINGLE_VALUED = frozenset({"death", "missing", "injured", "house", "wicket"})
+
+
 @dataclass
 class FactCheck:
     fact: Fact
     support: list[str]  # sources reporting the same value
-    dissent: dict[str, list[float]]  # sources reporting this kind of figure with other values
+    dissent: dict[str, list[float]]  # sources reporting this kind of figure, none of them ours
     status: str  # confirmed | conflict | disputed | unreported
 
 
-def compare_facts(ours: list[Fact], others: dict[str, list[Fact]]) -> list[FactCheck]:
+def compare_facts(ours: list[Fact], others: dict[str, list[Fact]],
+                  weights: dict[str, float] | None = None) -> list[FactCheck]:
     """For each of our figures: which independent sources report the same
-    value for the same kind of fact, and which report a different one.
-    Majority decides confirmed or conflict; a tie is disputed."""
+    value for the same kind of fact, and which report this kind of figure
+    without agreeing with any of ours (a source giving both the increase
+    and the new price agrees, it doesn't dissent). Votes are weighted by
+    source reliability when weights are given (truth-discovery style), so
+    a sensational site repeating a figure counts for less than a measured
+    report. Counts (deaths, missing) have one true value per story; for
+    other kinds a source must share none of our values to disagree.
+    Weighted majority decides confirmed or conflict; a tie is
+    disputed."""
+    weights = weights or {}
+    our_values: dict[str, set[float]] = {}
+    for f in ours:
+        our_values.setdefault(f.kind, set()).add(f.value)
     out, seen = [], set()
     for f in ours:
         if (f.kind, f.value) in seen:
@@ -137,15 +181,15 @@ def compare_facts(ours: list[Fact], others: dict[str, list[Fact]]) -> list[FactC
             values = {g.value for g in facts if g.kind == f.kind}
             if f.value in values:
                 support.append(source)
-            elif values:
+            elif values and (f.kind in SINGLE_VALUED or not values & our_values[f.kind]):
                 dissent[source] = sorted(values)
+        yes = sum(weights.get(s, 1.0) for s in support)
+        no = sum(weights.get(s, 1.0) for s in dissent)
         if not support and not dissent:
             status = "unreported"
-        elif len(support) > len(dissent):
-            status = "confirmed"
-        elif len(dissent) > len(support):
-            status = "conflict"
-        else:
+        elif abs(yes - no) < 1e-9:
             status = "disputed"
+        else:
+            status = "confirmed" if yes > no else "conflict"
         out.append(FactCheck(f, support, dissent, status))
     return out

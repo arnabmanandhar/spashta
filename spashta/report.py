@@ -59,7 +59,8 @@ class IntegrityReport:
         out = [f"# Integrity report: {self.title}", "", f"{self.url}  ", f"Outlet: {self.source or 'unknown'} · Language: {self.lang}",
                "", f"**{self.score}/100 · {self.label}**", ""]
         for s in self.signals:
-            out.append(f"## {s.name.capitalize()} · concern {s.concern:.2f}")
+            conf = "" if s.confidence >= 0.8 else f" · confidence {s.confidence:.2f}"
+            out.append(f"## {s.name.capitalize()} · concern {s.concern:.2f}{conf}")
             out.append(s.summary)
             out += [f"- {e}" for e in s.evidence]
             out.append("")
@@ -80,8 +81,12 @@ def label_for(score: int) -> str:
 
 
 def overall(signals: list[Signal]) -> int:
-    total = sum(WEIGHTS.get(s.name, 0.1) for s in signals)
-    concern = sum(WEIGHTS.get(s.name, 0.1) * s.concern for s in signals) / total if total else 0.0
+    """Weighted mean concern, each signal's weight scaled by its confidence,
+    so a signal with little to go on counts less instead of counting as
+    "no concern"."""
+    w = {s.name: WEIGHTS.get(s.name, 0.1) * s.confidence for s in signals}
+    total = sum(w.values())
+    concern = sum(w[s.name] * s.concern for s in signals) / total if total else 0.0
     return round(100 * (1 - concern))
 
 

@@ -81,8 +81,11 @@ def corroborate(article: Article, index: Index, k: int = 8) -> Corroboration:
     outlets = sorted({story.outlet_group(g[0].source) for g in groups})
 
     # One fact list per independent source (its copies add nothing new).
-    checks = compare_facts(extract_facts(article.text),
-                           {story.outlet_group(g[0].source): extract_facts(g[0].text) for g in groups})
+    # Votes weighted by each source's own restraint: a heavily sensational
+    # report counts for a fifth of a measured one.
+    reps = {story.outlet_group(g[0].source): g[0] for g in groups}
+    checks = compare_facts(extract_facts(article.text), {k: extract_facts(o.text) for k, o in reps.items()},
+                           {k: 1 - 0.8 * by_id[o.id].sensationalism for k, o in reps.items()})
     confirmed = [c for c in checks if c.status == "confirmed"]
     conflicts = [c for c in checks if c.status in ("conflict", "disputed")]
     unreported = [c for c in checks if c.status == "unreported"]
