@@ -1,0 +1,19 @@
+{
+  "_note": "Seed outlets: home pages only. Spashta discovers each site's feed or sitemap at ingest time, so nothing here goes stale when a feed URL changes. Add any news site or blog with `spashta sources add URL`.",
+  "sources": [
+    {"name": "Onlinekhabar", "url": "https://www.onlinekhabar.com", "lang": "ne"},
+    {"name": "Onlinekhabar English", "url": "https://english.onlinekhabar.com", "lang": "en"},
+    {"name": "Ekantipur", "url": "https://ekantipur.com", "lang": "ne"},
+    {"name": "The Kathmandu Post", "url": "https://kathmandupost.com", "lang": "en"},
+    {"name": "Setopati", "url": "https://www.setopati.com", "lang": "ne"},
+    {"name": "Ratopati", "url": "https://www.ratopati.com", "lang": "ne"},
+    {"name": "Nagarik", "url": "https://nagariknews.nagariknetwork.com", "lang": "ne"},
+    {"name": "Republica", "url": "https://myrepublica.nagariknetwork.com", "lang": "en"},
+    {"name": "The Himalayan Times", "url": "https://thehimalayantimes.com", "lang": "en"},
+    {"name": "The Rising Nepal", "url": "https://risingnepaldaily.com", "lang": "en"},
+    {"name": "Gorkhapatra", "url": "https://gorkhapatraonline.com", "lang": "ne"},
+    {"name": "Annapurna Post", "url": "https://annapurnapost.com", "lang": "ne"},
+    {"name": "Nepal Live Today", "url": "https://www.nepallivetoday.com", "lang": "en"},
+    {"name": "Nepal News", "url": "https://nepalnews.com", "lang": "en"}
+  ]
+}
