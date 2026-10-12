@@ -36,7 +36,7 @@ round is in [REVIEW_LOG.md](REVIEW_LOG.md).
                                                 ▼
                                    report.IntegrityReport (score, label, evidence)
                                                 │
-                                     cli · evaluate (Anchor metrics)
+                                     cli · api (FastAPI + page) · evaluate (Anchor metrics)
 ```
 
 ## Modules
@@ -67,6 +67,7 @@ round is in [REVIEW_LOG.md](REVIEW_LOG.md).
 | `report.py` | Weighted score, label, JSON and Markdown rendering, disclaimer in both languages |
 | `evaluate.py` | Retrieval metrics through `anchor.retrieval_metrics`; writes Anchor records |
 | `cli.py` | `spashta demo · sources · ingest · analyze · search · eval` |
+| `api.py` | FastAPI app and bilingual page; admin token, rate limits |
 
 ## What comes from Anchor
 

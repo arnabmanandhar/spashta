@@ -17,6 +17,7 @@ sqlite-vec or pgvector behind the same search() call.
 from __future__ import annotations
 
 import math
+import threading
 from collections import Counter, defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -98,6 +99,7 @@ class Index:
 
     def __init__(self, store: Store, embedder: Embedder):
         self.store, self.embedder = store, embedder
+        self._lock = threading.RLock()  # searches and appends from API worker threads
         self.reload()
 
     def _reset(self) -> None:
@@ -152,6 +154,10 @@ class Index:
         return chunk_article(article)
 
     def add_many(self, articles: Iterable[Article]) -> int:
+        with self._lock:
+            return self._add_many(articles)
+
+    def _add_many(self, articles: Iterable[Article]) -> int:
         n = 0
         for a in articles:
             chunks = chunk_article(a)
@@ -171,10 +177,15 @@ class Index:
 
     def search(self, query: str, k: int = 10, exclude_articles: Iterable[str] = (),
                exclude_sources: Iterable[str] = (), depth: int = 50, mode: str = "hybrid") -> list[Hit]:
-        """mode: hybrid (default), lexical or dense; the last two exist for
+        """mode: hybrid (default), or lexical / dense / xling alone for
         ablations in `spashta eval --compare`."""
         if mode not in MODES:
             raise ValueError(f"mode must be one of {MODES}")
+        with self._lock:
+            return self._search(query, k, exclude_articles, exclude_sources, depth, mode)
+
+    def _search(self, query: str, k: int, exclude_articles: Iterable[str], exclude_sources: Iterable[str],
+                depth: int, mode: str) -> list[Hit]:
         if not self.chunks:
             return []
         skip_a, skip_s = set(exclude_articles), set(exclude_sources)

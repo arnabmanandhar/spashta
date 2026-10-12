@@ -263,3 +263,29 @@ The remaining build time is tokenisation and hashing per chunk, which is
 linear; a neural embedder will dominate it in real use. Past ~100k chunks
 the dense half should move to sqlite-vec or pgvector behind the same
 `search()`.
+
+## Round 8 (v0.9.0): an API and a page people can use
+
+**Critique.** The only way to use Spashta was the command line, which
+rules out the readers it is for. Every later surface (web page, browser
+extension, Viber or Messenger bot) needs an HTTP API first, and an API
+that fetches URLs supplied by strangers needs abuse controls from day one.
+The index was also not safe to search while another thread was adding to
+it.
+
+**Change.**
+- `spashta/api.py` (FastAPI): `POST /api/analyze` (URL or pasted text,
+  optional LLM review), `GET /api/search`, `GET|POST /api/sources`,
+  `POST /api/ingest`, `GET /api/health`.
+- A single-file bilingual page at `/` (Nepali first, light and dark,
+  phone-width friendly, no framework): paste a link or text, see the score,
+  each signal's bar and evidence, and other coverage with its role.
+- Admin endpoints require `SPASHTA_ADMIN_TOKEN` (constant-time compare)
+  and are disabled when it isn't set; per-client rate limit on analyze and
+  search; request size limits; fetch errors mapped to 400/502 without
+  leaking internals; related links rendered only if http(s).
+- `Index` takes a re-entrant lock around search and append.
+
+**Result.** 78 tests, including a URL pointing at 127.0.0.1 refused with
+400, admin calls refused without the token, and the rate limit returning
+429 on the sixth request in a minute.

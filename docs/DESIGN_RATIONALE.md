@@ -179,3 +179,14 @@ in later review rounds are marked with the round that changed them.
    judged differently for each.
 4. Every calibration claim is a test over labelled samples, so a lexicon
    or weight change that breaks the ordering fails CI.
+
+## 11. Delivery: API first (round 8)
+
+1. Readers in Nepal mostly meet news on phones, in Facebook and Viber.
+   Every way to reach them (page, extension, bot) is a client of one HTTP
+   API, so the API comes before any of them.
+2. The first client is a plain page: one HTML file, no build step, Nepali
+   first, so it can be hosted anywhere and audited easily.
+3. An endpoint that fetches arbitrary URLs is an SSRF and abuse target.
+   The fetcher already refuses private addresses on every hop; the API adds
+   rate limits, size limits, and keeps write operations behind a token.
