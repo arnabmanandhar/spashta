@@ -25,7 +25,7 @@ def test_chunks_start_with_headline_and_lead():
 
 
 def test_nepali_morphology_matches_in_search(sample_index):
-    hits = sample_index.search("पेट्रोल मूल्य", k=3)
+    hits = sample_index.search("पेट्रोलको मूल्यमा", k=3, mode="lexical")
     assert hits[0].chunk.article_id == BY_URL["https://khabar-sample.example/samachar/2083/06/101180"].id
     assert "पेट्रोल" in hits[0].matched_terms
 
@@ -107,16 +107,16 @@ def test_llm_review_skips_without_key(monkeypatch):
 def test_retrieval_eval_uses_anchor_metrics(sample_index, tmp_path):
     out = tmp_path / "records.jsonl"
     result = evaluate_retrieval(sample_index, sample_questions_path(), k=5, records_out=out)
-    assert result["n"] == 16
+    assert result["n"] == 21
     assert result["mean"]["recall_at_k"] >= 0.7
     assert set(result["by_tag"]) >= {"ne", "en", "xl", "rom"}
-    assert out.read_text().count("\n") == 16
+    assert out.read_text().count("\n") == 21
 
 
 def test_mode_ablation_reports_significance(sample_index):
     from spashta.evaluate import compare_modes
     r = compare_modes(sample_index, sample_questions_path())
-    assert set(r["mean"]) == {"hybrid", "lexical", "dense"}
+    assert set(r["mean"]) == {"hybrid", "lexical", "dense", "xling"}
     assert r["mean"]["hybrid"]["ndcg_at_k"] >= r["mean"]["lexical"]["ndcg_at_k"]
     assert "p_value" in r["significance"]["hybrid vs lexical"]
 

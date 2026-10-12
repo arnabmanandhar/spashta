@@ -25,13 +25,14 @@ from typing import Optional
 import numpy as np
 
 from . import lang as L
+from . import xling
 from .chunk import chunk_article
 from .embed import Embedder
 from .models import Article, Chunk
 from .store import Store
 
 RRF_K = 60
-MODES = ("hybrid", "lexical", "dense")
+MODES = ("hybrid", "lexical", "dense", "xling")
 BM25_K1, BM25_B = 1.5, 0.75
 
 
@@ -43,6 +44,14 @@ class Hit:
     dense_rank: Optional[int] = None
     cosine: float = 0.0
     matched_terms: list[str] = field(default_factory=list)
+
+
+def embedding_text(chunk: Chunk, title: str) -> str:
+    """Contextual chunk text for the embedder: later chunks carry the
+    headline, so a passage about "the toll" still knows which event it is
+    about (a cheap form of contextual retrieval). Chunk 0 already starts
+    with the headline."""
+    return chunk.text if chunk.idx == 0 or not title else f"{title}\n{chunk.text}"
 
 
 class BM25:
@@ -81,6 +90,7 @@ class Index:
         self.chunks: list[Chunk] = []
         self.terms: list[set[str]] = []
         self.bm25 = BM25()
+        self.xbm25 = BM25()
         self.vectors = np.zeros((0, 0), dtype=np.float32)
         self.article_source: dict[str, str] = {}
         self.reload()
@@ -89,33 +99,34 @@ class Index:
         chunks, embedders, blobs = self.store.chunks()
         stale = [i for i, (e, b) in enumerate(zip(embedders, blobs)) if e != self.embedder.name or b is None]
         if stale:  # vectors from another embedder can't be compared with ours
-            fresh = self.embedder.embed([chunks[i].text for i in stale])
+            titles = self.store.article_titles()
+            fresh = self.embedder.embed([embedding_text(chunks[i], titles.get(chunks[i].article_id, "")) for i in stale])
             self.store.set_vectors(self.embedder.name, [(chunks[i].id, fresh[j]) for j, i in enumerate(stale)])
             for j, i in enumerate(stale):
                 blobs[i] = fresh[j].tobytes()
         self.chunks = chunks
         self.bm25 = BM25()
+        self.xbm25 = BM25()
         self.terms = []
         for c in chunks:
             t = L.content_terms(c.text)
             self.bm25.add(t)
+            self.xbm25.add(xling.xling_terms(c.text))
             self.terms.append(set(t))
         self.vectors = (np.vstack([np.frombuffer(b, dtype=np.float32) for b in blobs])
                         if blobs else np.zeros((0, 1), dtype=np.float32))
         self.article_source = self.store.article_sources()
 
     def add(self, article: Article) -> list[Chunk]:
-        chunks = chunk_article(article)
-        vectors = self.embedder.embed([c.text for c in chunks]) if chunks else np.zeros((0, 1))
-        self.store.upsert_article(article, chunks, self.embedder.name, vectors)
-        self.reload()
-        return chunks
+        self.add_many([article])
+        return chunk_article(article)
 
     def add_many(self, articles: Iterable[Article]) -> int:
         n = 0
         for a in articles:
             chunks = chunk_article(a)
-            vectors = self.embedder.embed([c.text for c in chunks]) if chunks else np.zeros((0, 1))
+            vectors = (self.embedder.embed([embedding_text(c, a.title) for c in chunks]) if chunks
+                       else np.zeros((0, 1)))
             self.store.upsert_article(a, chunks, self.embedder.name, vectors)
             n += 1
         self.reload()
@@ -136,6 +147,9 @@ class Index:
         lex = self.bm25.scores(q_terms)
         lex[~allowed] = 0
         lex_order = [i for i in np.argsort(-lex, kind="stable")[:depth] if lex[i] > 0]
+        xl = self.xbm25.scores(xling.xling_terms(query))
+        xl[~allowed] = 0
+        xl_order = [i for i in np.argsort(-xl, kind="stable")[:depth] if xl[i] > 0]
         q_vec = self.embedder.embed([query], kind="query")[0]
         cos = self.vectors @ q_vec
         cos[~allowed] = -1
@@ -143,11 +157,14 @@ class Index:
         fused: dict[int, float] = defaultdict(float)
         lex_rank = {i: r for r, i in enumerate(lex_order, 1)}
         dense_rank = {i: r for r, i in enumerate(dense_order, 1)}
-        if mode != "dense":
+        if mode in ("hybrid", "lexical"):
             for i, r in lex_rank.items():
                 fused[i] += 1 / (RRF_K + r)
-        if mode != "lexical":
+        if mode in ("hybrid", "dense"):
             for i, r in dense_rank.items():
+                fused[i] += 1 / (RRF_K + r)
+        if mode in ("hybrid", "xling"):
+            for r, i in enumerate(xl_order, 1):
                 fused[i] += 1 / (RRF_K + r)
         q_set = set(q_terms)
         ranked = sorted(fused, key=lambda i: (-fused[i], i))[:k]

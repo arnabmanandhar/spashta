@@ -1,5 +1,5 @@
 {
-  "_note": "Retrieval evaluation over sample_articles.json. relevant_urls lists every article that answers the query (both languages). Tags: ne/en = query language, xl = relevant articles include the other language, para = paraphrased, rom = romanised Nepali.",
+  "_note": "Retrieval evaluation over sample_articles.json. relevant_urls lists every article that answers the query (both languages). Tags: ne/en = query language, xl = relevant articles include the other language, para = paraphrased, rom = romanised Nepali. 'heldout' questions were written after the glossary and deliberately use words it does not contain, to show how much of the cross-language gain is glossary fitting.",
   "questions": [
     {
       "query": "सिन्धुपाल्चोक पहिरोमा कति जनाको मृत्यु भयो?",
@@ -183,6 +183,71 @@
       "relevant_urls": [
         "https://himal-times.example/news/noc-raises-petrol-price-by-rs-5-per-litre-from-tonight",
         "https://khabar-sample.example/samachar/2083/06/101180"
+      ]
+    },
+    {
+      "query": "slope collapse buries homes after heavy downpour",
+      "tags": [
+        "en",
+        "xl",
+        "heldout"
+      ],
+      "relevant_urls": [
+        "https://khabar-sample.example/samachar/2083/06/101234",
+        "https://himal-times.example/news/landslide-sindhupalchok-12-dead-5-missing-rescue-continues",
+        "https://wire-sample.example/stories/sindhupalchok-landslide-kills-12-five-missing",
+        "https://sanoportal.example/2083/06/10/bhayanak-pahiro-50-janako-mrityu"
+      ]
+    },
+    {
+      "query": "गाडी चलाउनेहरूलाई महँगो पर्ने इन्धन",
+      "tags": [
+        "ne",
+        "xl",
+        "heldout"
+      ],
+      "relevant_urls": [
+        "https://khabar-sample.example/samachar/2083/06/101180",
+        "https://himal-times.example/news/noc-raises-petrol-price-by-rs-5-per-litre-from-tonight",
+        "https://sanoportal.example/2083/06/09/petrol-ko-mulya-20-rupaiya",
+        "https://daily-sample.example/opinion-news/corrupt-regime-slams-citizens-with-shocking-fuel-hike"
+      ]
+    },
+    {
+      "query": "Kirtipur chase with balls to spare",
+      "tags": [
+        "en",
+        "xl",
+        "heldout"
+      ],
+      "relevant_urls": [
+        "https://himal-times.example/sports/nepal-beat-uae-by-six-wickets-in-tri-series-opener",
+        "https://khabar-sample.example/khelkud/2083/06/101210"
+      ]
+    },
+    {
+      "query": "school leaving exam outcome",
+      "tags": [
+        "en",
+        "xl",
+        "heldout"
+      ],
+      "relevant_urls": [
+        "https://himal-times.example/education/see-results-published-48-percent-pass",
+        "https://khabar-sample.example/samachar/2083/06/101050"
+      ]
+    },
+    {
+      "query": "bipad ma ghar puriyo",
+      "tags": [
+        "rom",
+        "xl",
+        "heldout"
+      ],
+      "relevant_urls": [
+        "https://khabar-sample.example/samachar/2083/06/101234",
+        "https://himal-times.example/news/landslide-sindhupalchok-12-dead-5-missing-rescue-continues",
+        "https://wire-sample.example/stories/sindhupalchok-landslide-kills-12-five-missing"
       ]
     }
   ]

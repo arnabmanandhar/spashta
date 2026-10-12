@@ -138,6 +138,9 @@ class Store:
             self._db.executemany("UPDATE chunks SET embedder = ?, vector = ? WHERE id = ?",
                                  [(embedder, np.asarray(v, dtype=np.float32).tobytes(), cid) for cid, v in items])
 
+    def article_titles(self) -> dict[str, str]:
+        return {r[0]: r[1] for r in self._db.execute("SELECT id, title FROM articles")}
+
     def article_sources(self) -> dict[str, str]:
         return {r[0]: r[1] for r in self._db.execute("SELECT id, source FROM articles")}
 
