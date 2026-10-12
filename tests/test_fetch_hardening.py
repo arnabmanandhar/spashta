@@ -1,0 +1,94 @@
+import pytest
+from conftest import fixture
+
+from spashta.fetch import Fetcher, FetchError, Response
+from spashta.ingest import boilerplate, ingest_sources
+from spashta.models import Article, Source
+from spashta.store import Store
+
+
+class Scripted:
+    """Transport answering from a list of responses per URL, in order."""
+
+    def __init__(self, script):
+        self.script = {u: list(rs) for u, rs in script.items()}
+        self.calls = []
+
+    def __call__(self, url, headers):
+        self.calls.append((url, dict(headers)))
+        if url.endswith("/robots.txt"):
+            return Response(url, 404, {}, b"")
+        rs = self.script.get(url)
+        if not rs:
+            return Response(url, 404, {}, b"")
+        return rs.pop(0) if len(rs) > 1 else rs[0]
+
+
+def test_redirect_to_private_address_is_refused_before_request():
+    web = Scripted({"https://93.184.216.34/a": [Response("https://93.184.216.34/a", 302, {"location": "http://127.0.0.1/admin"}, b"")]})
+    with pytest.raises(FetchError) as e:
+        Fetcher(transport=web, delay_s=0).get("https://93.184.216.34/a")
+    assert e.value.kind == "blocked"
+    assert not any("127.0.0.1" in u for u, _ in web.calls)
+
+
+def test_redirects_are_followed_and_robots_rechecked():
+    web = Scripted({
+        "https://a.example/old": [Response("https://a.example/old", 301, {"location": "/new"}, b"")],
+        "https://a.example/new": [Response("https://a.example/new", 200, {"content-type": "text/html"}, b"ok")],
+    })
+    r = Fetcher(transport=web, delay_s=0, allow_private=True).get("https://a.example/old")
+    assert r.url == "https://a.example/new" and r.text == "ok"
+
+
+def test_retry_after_on_429(monkeypatch):
+    sleeps = []
+    monkeypatch.setattr("spashta.fetch.time.sleep", sleeps.append)
+    web = Scripted({"https://a.example/x": [Response("https://a.example/x", 429, {"retry-after": "2"}, b""),
+                                            Response("https://a.example/x", 200, {}, b"fine")]})
+    r = Fetcher(transport=web, delay_s=0, allow_private=True).get("https://a.example/x")
+    assert r.text == "fine" and 2.0 in sleeps
+
+
+def test_conditional_get_uses_cache(tmp_path):
+    store = Store(tmp_path / "s.db")
+    web = Scripted({"https://a.example/feed": [
+        Response("https://a.example/feed", 200, {"etag": '"v1"', "content-type": "application/rss+xml"}, b"<rss/>"),
+        Response("https://a.example/feed", 304, {}, b""),
+    ]})
+    f = Fetcher(transport=web, delay_s=0, allow_private=True, cache=store)
+    assert f.get("https://a.example/feed", conditional=True).text == "<rss/>"
+    second = f.get("https://a.example/feed", conditional=True)
+    assert second.text == "<rss/>" and second.headers.get("x-spashta-cache") == "hit"
+    assert web.calls[-1][1]["If-None-Match"] == '"v1"'
+
+
+def test_boilerplate_learned_per_site():
+    tail = "Follow us on Facebook and Twitter for the latest news updates."
+    bodies = [f"Story number {i} has its own unique opening paragraph here.\n\n{tail}" for i in range(4)]
+    bp = boilerplate.learn(bodies)
+    assert len(bp) == 1
+    a = boilerplate.strip(Article(url="https://x.example/1", title="t", body=bodies[0]), bp)
+    assert a.body == "Story number 0 has its own unique opening paragraph here."
+    assert boilerplate.learn(bodies[:2]) == set()  # too few articles to tell
+
+
+def test_parallel_ingest(fake_web, sample_index):
+    web, fetcher = fake_web({
+        "https://news.example/feed": ("application/rss+xml", fixture("feed_rss.xml")),
+        "https://news.example/2083/06/101180": ("text/html", fixture("article_ne.html")),
+        "https://blog.example/": ("text/html", fixture("home.html")),
+    })
+    results = ingest_sources([Source(url="https://news.example/feed", kind="feed", endpoint="https://news.example/feed"),
+                              Source(url="https://blog.example/")], fetcher, sample_index, workers=2)
+    assert results[0].added == 1
+    assert results[1].kind == "links"
+
+
+def test_bikram_sambat_dates():
+    from spashta.bsdate import find_bs_date, parse_bs_date
+    assert find_bs_date("काठमाडौं, २०८३ असोज २४ ।") == (2083, 6, 24)
+    assert find_bs_date("/samachar/2083-06-24/x") == (2083, 6, 24)
+    assert find_bs_date("published 2026-10-10") is None  # Gregorian, not BS
+    pytest.importorskip("nepali_datetime")
+    assert parse_bs_date("२०८३ असोज २४").date().isoformat() == "2026-10-10"

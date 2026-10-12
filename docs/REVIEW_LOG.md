@@ -196,3 +196,40 @@ no measured headline is flagged for capitals; overall scores: measured
 reports 86-98, sensational and loaded ones 15-30. The measured petrol
 reports went from "1 figure conflicts" back to "4 figures confirmed"
 while both sensational petrol stories still show the Rs 20 conflict.
+
+## Round 6 (v0.7.0): ingestion that survives the real web
+
+**Critique.**
+- *SSRF through redirects.* urllib followed redirects on its own and the
+  address was checked only after the response arrived, so a public URL
+  redirecting to `http://127.0.0.1/admin` would already have been
+  requested.
+- *Wasteful polling.* Every poll re-downloaded every feed and sitemap.
+- *No retries.* A single 429 or 503 dropped a source for that run.
+- *Serial ingestion.* Sources were fetched one after another although the
+  per-host delay only needs to hold within a host.
+- *Site boilerplate.* "Follow us on Facebook" style paragraphs that a site
+  repeats in every article made its articles look alike to retrieval and
+  fed the clickbait detector.
+- *Bikram Sambat dates.* Pages with only a BS date had no publication date,
+  so the same-story time window couldn't apply to them.
+
+**Change.**
+- The transport no longer follows redirects; `Fetcher` follows up to 5
+  hops itself, checking scheme, credentials and private addresses before
+  each request.
+- Conditional GET (ETag / Last-Modified) for feeds and sitemaps, cached in
+  a new `http_cache` table; a 304 serves the cached body.
+- Retries for 429/503 and network errors with exponential backoff,
+  honouring `Retry-After` (capped at 30 s).
+- `ingest_sources`: sources are collected in parallel threads (per-host
+  spacing still enforced by the shared Fetcher), then indexed in one pass.
+- `ingest/boilerplate.py`: paragraphs repeated in ≥3 and ≥30% of a site's
+  articles are learned and removed per site.
+- `bsdate.py`: finds BS dates in text and URLs (named months or numeric)
+  and converts them with the optional `nepali-datetime` package
+  (`spashta[nepali]`); used when a page declares no date.
+
+**Result.** 69 tests, including a redirect to 127.0.0.1 refused before any
+request, a 429 with Retry-After recovered, a 304 served from cache, and
+२०८३ असोज २४ resolved to 2026-10-10.

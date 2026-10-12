@@ -45,12 +45,14 @@ round is in [REVIEW_LOG.md](REVIEW_LOG.md).
 |---|---|
 | `lang.py` | NFC normalisation, digit folding, joiner removal; script-based language detection (ne/en/hi/mixed); tokenizer that keeps Devanagari words whole; Nepali case-marker and plural stripping; light English stemmer; number extraction that matches १,२०० with 1200; sentence split on danda |
 | `models.py` | Pydantic `Source`, `Article`, `Chunk`, `FeedItem`; canonical URLs (no tracking parameters) and stable article ids |
-| `fetch.py` | `Fetcher`: robots.txt, per-host delay, SSRF guard, redirects re-checked, 5 MB cap, charset detection; pluggable transport for tests |
+| `fetch.py` | `Fetcher`: robots.txt, per-host delay, SSRF guard on every redirect hop, retries with Retry-After, conditional GET, 5 MB cap, charset detection; pluggable transport for tests |
+| `bsdate.py` | Bikram Sambat date detection and conversion (optional `nepali-datetime`) |
 | `ingest/feeds.py` | RSS 2.0, RSS 1.0, Atom and JSON Feed parsing |
 | `ingest/sitemap.py` | Sitemaps and sitemap indexes, Google News sitemap fields |
 | `ingest/extract.py` | Page parsing (metadata, feeds, links, paragraphs) and article extraction |
 | `ingest/discover.py` | Resolve any URL to feed, sitemap or link-crawl; list article URLs |
-| `ingest/__init__.py` | `ingest_source`: list, skip what's seen, fetch, extract, index |
+| `ingest/__init__.py` | `collect_source` (thread-safe fetch), `ingest_sources` (parallel across hosts, one index pass) |
+| `ingest/boilerplate.py` | Per-site repeated-paragraph removal |
 | `chunk.py` | Headline+lead chunk, then sentence-packed chunks with one sentence of overlap |
 | `embed.py` | `HashingEmbedder` (offline), multilingual-e5 and bge-m3 via sentence-transformers |
 | `xling.py` | Devanagari romaniser, phonetic keys, bilingual news glossary: the offline cross-language bridge |
@@ -85,6 +87,7 @@ copy:
 - `articles(id, url, source, title, body, lang, published, author, summary, fetched_at)`
 - `chunks(id, article_id, idx, text, lang, embedder, vector)`
 - `seen(url, article_id, seen_at)`: listed URLs already fetched
+- `http_cache(url, etag, last_modified, body, content_type)`: conditional GET for feeds and sitemaps
 
 ## Report
 
