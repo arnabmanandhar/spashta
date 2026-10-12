@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.venv/
+*.egg-info/
+build/
+dist/
+spashta.db
+*.db
+*.db-wal
+*.db-shm
+.env
+.env.*
+.DS_Store

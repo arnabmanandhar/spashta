@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+<channel><title>नमुना खबर</title><link>https://news.example/</link><language>ne</language>
+<item><title>पेट्रोलको मूल्य बढ्यो</title><link>https://news.example/2083/06/101180</link>
+<pubDate>Fri, 09 Oct 2026 12:35:00 +0000</pubDate><dc:creator>नमुना संवाददाता</dc:creator>
+<description><![CDATA[<p>नेपाल आयल निगमले पेट्रोलको मूल्य बढायो।</p>]]></description></item>
+<item><title>Second item</title><link>https://news.example/2083/06/101181?utm_source=rss</link></item>
+</channel></rss>

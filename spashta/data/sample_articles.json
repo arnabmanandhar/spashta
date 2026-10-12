@@ -1,0 +1,61 @@
+{
+  "_note": "Synthetic sample articles written for Spashta's demo and tests. The outlets (*.example) and events are fictional; they are not real news.",
+  "articles": [
+    {
+      "url": "https://khabar-sample.example/samachar/2083/06/101234",
+      "title": "सिन्धुपाल्चोकमा पहिरो: १२ जनाको मृत्यु, ५ जना बेपत्ता",
+      "author": "नमुना संवाददाता",
+      "published": "2026-10-10T06:30:00+05:45",
+      "body": "सिन्धुपाल्चोकको एक गाउँमा शुक्रबार राति गएको पहिरोमा परी १२ जनाको मृत्यु भएको छ भने ५ जना बेपत्ता छन्। जिल्ला प्रहरी कार्यालयका प्रवक्ता नमुना प्रसाद श्रेष्ठले मृतकको सङ्ख्या पुष्टि गरेको बताए।\n\nप्रहरीका अनुसार पहिरोले ८ घर पुरिएका छन्। उद्धार टोलीले घाइते ७ जनालाई जिल्ला अस्पताल पठाएको छ। प्रमुख जिल्ला अधिकारीले बेपत्ता व्यक्तिको खोजी जारी रहेको जनाए।\n\nजल तथा मौसम विज्ञान विभागले थप दुई दिन भारी वर्षा हुने सम्भावना रहेको भन्दै सतर्क रहन आग्रह गरेको छ। विभागका मौसमविद्ले पहाडी जिल्लामा पहिरोको जोखिम उच्च रहेको बताए। स्थानीय पालिकाले प्रभावित परिवारलाई अस्थायी आश्रय र राहत सामग्री उपलब्ध गराएको जनाएको छ।"
+    },
+    {
+      "url": "https://himal-times.example/news/landslide-sindhupalchok-12-dead-5-missing-rescue-continues",
+      "title": "Sindhupalchok landslide kills 12, five missing",
+      "author": "Sample Staff Reporter",
+      "published": "2026-10-10T08:00:00+05:45",
+      "body": "A landslide triggered by heavy overnight rain killed 12 people in a village in Sindhupalchok district on Friday night, and five others are missing, police said.\n\nDistrict Police Office spokesperson Namuna Prasad Shrestha confirmed the death toll and said eight houses were buried. Seven injured people were taken to the district hospital, according to the police.\n\nThe Chief District Officer said the search for the missing would continue on Saturday. The Department of Hydrology and Meteorology said heavy rain is likely for two more days and urged people in hill districts to stay alert. The local municipality said it had provided temporary shelter and relief materials to affected families."
+    },
+    {
+      "url": "https://sanoportal.example/2083/06/10/bhayanak-pahiro-50-janako-mrityu",
+      "title": "भयानक पहिरो! ५० जनाको मृत्युको आशंका, हेर्नुहोस् डरलाग्दो दृश्य",
+      "author": "",
+      "published": "2026-10-10T07:10:00+05:45",
+      "body": "सिन्धुपाल्चोकमा गएको भयानक पहिरोले पूरै गाउँ बगाएको छ। सामाजिक सञ्जालमा भाइरल भिडियोमा डरलाग्दो दृश्य देखिन्छ। स्रोतका अनुसार मृत्यु हुनेको सङ्ख्या धेरै हुन सक्ने आशंका छ।\n\nगाउँमा त्राहिमाम मच्चिएको छ र स्थानीयहरू आतंकित छन्। नाम नबताउने शर्तमा एक स्थानीयले सरकारले कुनै वास्ता नगरेको गुनासो गरे। प्रहरीले १२ जनाको शव फेला पारेको छ तर वास्तविक सङ्ख्या धेरै हुन सक्ने चर्चा छ।\n\nयो अहिलेसम्मकै ठूलो विपत्ति हुन सक्ने हल्ला छ। पूरा भिडियो हेर्नुहोस् र सबैलाई सेयर गर्नुहोस्!"
+    },
+    {
+      "url": "https://himal-times.example/news/noc-raises-petrol-price-by-rs-5-per-litre-from-tonight",
+      "title": "NOC raises petrol price by Rs 5 per litre",
+      "author": "Sample Business Desk",
+      "published": "2026-10-09T18:00:00+05:45",
+      "body": "Nepal Oil Corporation has raised the price of petrol by Rs 5 per litre, taking the retail price in Kathmandu Valley to Rs 180, effective from midnight.\n\nThe price of diesel and kerosene has been raised by Rs 3 per litre, to Rs 165, the corporation said in a statement. NOC spokesperson Sample Raj Adhikari said the revision followed the latest price list from the Indian Oil Corporation and the corporation's mounting losses.\n\nTransport entrepreneurs said they would discuss whether to seek a fare revision. Economists told reporters that fuel price increases usually push up food prices within weeks."
+    },
+    {
+      "url": "https://khabar-sample.example/samachar/2083/06/101180",
+      "title": "पेट्रोलको मूल्य प्रतिलिटर ५ रुपैयाँ बढ्यो",
+      "author": "नमुना आर्थिक संवाददाता",
+      "published": "2026-10-09T18:20:00+05:45",
+      "body": "नेपाल आयल निगमले पेट्रोलको मूल्य प्रतिलिटर ५ रुपैयाँ बढाएको छ। अब काठमाडौं उपत्यकामा पेट्रोल प्रतिलिटर १८० रुपैयाँमा बिक्री हुनेछ। नयाँ मूल्य आज मध्यरातदेखि लागू हुने निगमले विज्ञप्ति जारी गर्दै जनाएको छ।\n\nडिजेल र मट्टितेलको मूल्य प्रतिलिटर ३ रुपैयाँ बढाएर १६५ रुपैयाँ पुर्‍याइएको छ। निगमका प्रवक्ता नमुना राज अधिकारीले भारतीय आयल निगमबाट प्राप्त नयाँ मूल्यसूची र निगमको बढ्दो घाटाका कारण मूल्य समायोजन गरिएको बताए।\n\nयातायात व्यवसायीहरूले भाडा समायोजनबारे छलफल गर्ने जनाएका छन्। अर्थशास्त्रीहरूका अनुसार इन्धनको मूल्यवृद्धिले केही हप्तामै खाद्यान्नको मूल्य बढाउँछ।"
+    },
+    {
+      "url": "https://daily-sample.example/opinion-news/corrupt-regime-slams-citizens-with-shocking-fuel-hike",
+      "title": "Corrupt regime SLAMS citizens with SHOCKING Rs 20 fuel hike!",
+      "author": "",
+      "published": "2026-10-09T20:00:00+05:45",
+      "body": "In yet another outrageous move, the so-called oil corporation has slammed ordinary citizens with a shocking fuel price hike. Petrol now costs Rs 180 a litre, and people are furious.\n\nSources say the hike is only the beginning and prices could explode further. The notorious mafia controlling the fuel trade is clearly behind this disgraceful decision, insiders say. Ordinary people are left to suffer while the puppet officials do nothing.\n\nThis is a disaster for every household. Share this before it gets deleted!"
+    },
+    {
+      "url": "https://himal-times.example/sports/nepal-beat-uae-by-six-wickets-in-tri-series-opener",
+      "title": "Nepal beat UAE by six wickets in tri-series opener",
+      "author": "Sample Sports Reporter",
+      "published": "2026-10-08T17:00:00+05:45",
+      "body": "Nepal beat the United Arab Emirates by six wickets in the opening match of the tri-series at Kirtipur on Wednesday.\n\nChasing 214, Nepal reached the target with 11 balls to spare. The captain said after the match that the bowlers had set up the win by restricting the UAE in the final overs. The team's coach told reporters that the batting order would stay the same for the next match against the third team in the series. Nepal play their second match on Friday."
+    },
+    {
+      "url": "https://khabar-sample.example/samachar/2083/06/101050",
+      "title": "एसईईको नतिजा सार्वजनिक, ४८ प्रतिशत विद्यार्थी उत्तीर्ण",
+      "author": "नमुना शिक्षा संवाददाता",
+      "published": "2026-10-07T12:00:00+05:45",
+      "body": "राष्ट्रिय परीक्षा बोर्डले माध्यमिक शिक्षा परीक्षा (एसईई) को नतिजा सार्वजनिक गरेको छ। बोर्डका अनुसार यस वर्ष परीक्षामा सहभागी विद्यार्थीमध्ये ४८ प्रतिशत उत्तीर्ण भएका छन्।\n\nबोर्डका अध्यक्षले पत्रकार सम्मेलनमा गत वर्षको तुलनामा उत्तीर्ण दर केही बढेको बताए। उनका अनुसार गणित र विज्ञान विषयमा विद्यार्थीको नतिजा कमजोर देखिएको छ। शिक्षाविद्हरूले सामुदायिक विद्यालयमा शिक्षक अभाव र पठनपाठनको गुणस्तरमा सुधार आवश्यक रहेको बताएका छन्।\n\nनतिजा बोर्डको वेबसाइटबाट हेर्न सकिने बोर्डले जनाएको छ।"
+    }
+  ]
+}

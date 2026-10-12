@@ -1,0 +1,13 @@
+{
+  "_note": "Retrieval evaluation questions over sample_articles.json. relevant_urls are the articles that answer each query. Includes Nepali, English and cross-language queries.",
+  "questions": [
+    {"query": "सिन्धुपाल्चोक पहिरोमा कति जनाको मृत्यु भयो?", "relevant_urls": ["https://khabar-sample.example/samachar/2083/06/101234", "https://sanoportal.example/2083/06/10/bhayanak-pahiro-50-janako-mrityu"]},
+    {"query": "How many people died in the Sindhupalchok landslide?", "relevant_urls": ["https://himal-times.example/news/landslide-sindhupalchok-12-dead-5-missing-rescue-continues"]},
+    {"query": "petrol price per litre Nepal Oil Corporation", "relevant_urls": ["https://himal-times.example/news/noc-raises-petrol-price-by-rs-5-per-litre-from-tonight", "https://daily-sample.example/opinion-news/corrupt-regime-slams-citizens-with-shocking-fuel-hike"]},
+    {"query": "पेट्रोलको मूल्य कति बढ्यो?", "relevant_urls": ["https://khabar-sample.example/samachar/2083/06/101180"]},
+    {"query": "एसईई नतिजा उत्तीर्ण प्रतिशत", "relevant_urls": ["https://khabar-sample.example/samachar/2083/06/101050"]},
+    {"query": "Nepal cricket win against UAE", "relevant_urls": ["https://himal-times.example/sports/nepal-beat-uae-by-six-wickets-in-tri-series-opener"]},
+    {"query": "पहिरोमा बेपत्ता व्यक्तिको खोजी", "relevant_urls": ["https://khabar-sample.example/samachar/2083/06/101234"]},
+    {"query": "diesel kerosene price Rs 165", "relevant_urls": ["https://himal-times.example/news/noc-raises-petrol-price-by-rs-5-per-litre-from-tonight"]}
+  ]
+}
