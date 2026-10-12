@@ -96,8 +96,49 @@ def phonetic_key(latin: str) -> str:
 
 
 @lru_cache(maxsize=1)
+def _data() -> dict:
+    return json.loads((resources.files("spashta") / "data" / "glossary.json").read_text(encoding="utf-8"))
+
+
+def event_concepts() -> frozenset[str]:
+    return frozenset(_data()["event_concepts"])
+
+
+def named_concepts() -> frozenset[str]:
+    return frozenset(_data()["named_concepts"])
+
+
+_NAME_RE = re.compile(r"(?<![.!?]\s)(?<!^)\b([A-Z][a-z]{2,})\b")
+_ACRONYM_RE = re.compile(r"\b([A-Z]{2,5})\b")
+
+
+def name_keys(text: str) -> set[str]:
+    """Phonetic keys of likely proper names in English text: capitalised
+    words that don't start a sentence, plus short acronyms. Used to learn
+    which keys are names, which then also applies to Devanagari text."""
+    out = set()
+    for line in L.normalize(text).splitlines():
+        for m in [*_NAME_RE.finditer(line), *_ACRONYM_RE.finditer(line)]:
+            w = m.group(1).lower()
+            if w not in L.EN_STOPWORDS:
+                out.add(phonetic_key(L.stem(w)))
+    return out - glossary_keys()
+
+
+@lru_cache(maxsize=1)
+def glossary_keys() -> frozenset[str]:
+    """Phonetic keys of every glossary word: common vocabulary, never names."""
+    keys = set()
+    for _concept, en, ne in _data()["concepts"]:
+        for w in en + ne:
+            for t in L.content_terms(w):
+                keys.add(phonetic_key(romanize(t) if L.is_devanagari(t) else t))
+    return frozenset(keys)
+
+
+@lru_cache(maxsize=1)
 def _glossary() -> tuple[dict[str, str], list[tuple[str, str]]]:
-    data = json.loads((resources.files("spashta") / "data" / "glossary.json").read_text(encoding="utf-8"))
+    data = _data()
     words: dict[str, str] = {}
     phrases: list[tuple[str, str]] = []
     for concept, en, ne in data["concepts"]:

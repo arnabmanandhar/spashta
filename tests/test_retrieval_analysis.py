@@ -35,10 +35,10 @@ def test_search_excludes_own_outlet(sample_index):
     assert all(sample_index.article_source[h.chunk.article_id] != "khabar-sample.example" for h in hits)
 
 
-def test_related_coverage_skips_unrelated_stories(sample_index):
-    related = dict(sample_index.related_articles(MEASURED_NE))
-    assert SENSATIONAL_NE.id in related
-    assert BY_URL["https://himal-times.example/sports/nepal-beat-uae-by-six-wickets-in-tri-series-opener"].id not in related
+def test_candidates_exclude_own_article_and_outlet(sample_index):
+    cands = dict(sample_index.candidate_articles(MEASURED_NE))
+    assert MEASURED_NE.id not in cands
+    assert all(sample_index.article_source[a] != MEASURED_NE.source for a in cands)
 
 
 def test_lexicon_matches_inflected_nepali():

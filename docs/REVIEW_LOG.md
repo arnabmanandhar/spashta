@@ -78,3 +78,42 @@ both significant. xling alone scores highest overall, but it was built
 knowing these questions; on the held-out questions hybrid is best, which
 is the argument for fusing rankings rather than trusting any single one.
 The glossary should grow from real query logs, not from this benchmark.
+
+## Round 3 (v0.4.0): counting independent sources, not search hits
+
+**Critique.** Corroboration counted whatever retrieval returned.
+Three failure modes in the v0.3 demo: a wire story copied word for word
+by a second site counted as a second confirmation; an opinion blog about
+landslides counted as coverage of the event; and nothing stopped last
+year's landslide in another district (or an LPG story next to a petrol
+story) from "corroborating" this one. Meanwhile the Nepali landslide story
+did not find its English coverage at all, because the old relatedness
+filter used only same-script terms. Credibility research is clear that
+*independent* confirmation is what matters; 20 sites echoing one press
+release is one source.
+
+**Change.**
+- `story.py`: `same_story` requires the same kind of event (from glossary
+  event concepts: landslide, increase, exam result...), a shared specific
+  subject (a proper name or a named concept such as petrol or UAE), and
+  publication within 3 days. Proper names are learned from capitalisation
+  in English text and stored as phonetic keys, so the same name written in
+  Devanagari is recognised. Every match records its reason.
+- `genre`: first-person argument or an opinion/blog URL section marks
+  commentary, which is listed but not counted.
+- `near_duplicate`: 5-word shingle Jaccard; copies collapse into one source.
+- `data/outlet_groups.json`: outlets with one owner (Kantipur Media's
+  ekantipur and Kathmandu Post, Nagarik Network, Gorkhapatra Corporation,
+  Onlinekhabar's two sites) count once.
+- Corroboration now labels each related article independent, copy,
+  same-owner or commentary, with the reason it matched.
+
+**Result.** On all 136 article pairs of the sample corpus, same-story
+matching agrees with the hand-labelled events: 0 false matches, 0 missed
+(opinion pieces excluded). The Nepali landslide report now finds the
+English coverage, counts the wire copy once and sets the blog aside:
+"Reported by 2 independent sources" instead of the earlier misleading
+count.
+
+**Still wrong (next round).** "5" and "8" in the Nepali story are reported
+as not found elsewhere, but the English coverage says "five" and "eight".
