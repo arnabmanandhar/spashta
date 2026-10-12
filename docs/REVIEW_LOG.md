@@ -151,3 +151,48 @@ sensational site repeated it.
 
 Overall scores now separate cleanly: measured Nepali report 97/100, the
 sensational one 50, the loaded English one 14.
+
+## Round 5 (v0.6.0): calibrating the signals
+
+**Critique.** A signal table over all 17 samples exposed:
+- *Short text read as good sourcing.* The two shortest, most sensational
+  items got sourcing concern 0 ("too short to judge"), which the overall
+  score then treated as perfect.
+- *Double counting.* "स्रोतका अनुसार" (according to sources) counted once as
+  anonymous and again as named attribution through "अनुसार".
+- *Acronyms as shouting.* NOC, UAE, SEE and LPG in measured headlines were
+  flagged as capitals.
+- *Clickbait structure ignored.* Curiosity gaps ("यस्तो छ", "here's why"),
+  question headlines, listicles and "share this" were invisible unless they
+  happened to contain a lexicon word.
+- *Headline facts.* A headline stating a figure the body only hedges
+  ("50 killed" vs "50 feared dead") was not detected.
+- *Fact voting.* After round 4, a measured petrol report was marked as
+  conflicting because two sensational sites repeated a wrong figure, and a
+  source giving the increase and the new price looked like it disagreed.
+
+**Change.**
+- Signals carry a confidence from text length; the overall score weights
+  each signal by weight × confidence. Short items get a real sourcing
+  concern with low confidence instead of a free pass.
+- Phrase matches consume their words before single-word matching.
+- Shouting needs 5+ capital letters and excludes a list of common
+  Nepali-news acronyms.
+- New clickbait structures (curiosity gap, listicle, call to share,
+  question headline) in both languages; first-person opinion counts
+  toward framing.
+- Headline check uses extracted facts: figures not in the body, and
+  figures the body hedges but the headline states flatly.
+- Facts split money and percentages into levels and changes (Rs 180 vs
+  "raised by Rs 5"); death tolls and other counts are single-valued, other
+  kinds only disagree when they share none of our values; votes are
+  weighted by each source's restraint (1 − 0.8 × sensationalism).
+- `test_calibration.py`: each labelled sample (sensational, loaded,
+  poorly sourced) must score worse than every unlabelled one, signal by
+  signal, and overall.
+
+**Result.** All three labelled signals separate perfectly on the samples;
+no measured headline is flagged for capitals; overall scores: measured
+reports 86-98, sensational and loaded ones 15-30. The measured petrol
+reports went from "1 figure conflicts" back to "4 figures confirmed"
+while both sensational petrol stories still show the Rs 20 conflict.

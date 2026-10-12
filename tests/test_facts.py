@@ -39,6 +39,16 @@ def test_compare_majority_decides():
     assert c.status == "conflict" and c.support == ["c"] and set(c.dissent) == {"a", "b"}
 
 
+def test_reliability_weights_and_partial_agreement():
+    ours = extract_facts("Petrol price raised by Rs 5 to Rs 180")
+    others = {"measured": extract_facts("raised by Rs 5 a litre"), "tabloid": extract_facts("a shocking Rs 20 hike"),
+              "mixed": extract_facts("a Rs 20 hike, petrol now Rs 180")}
+    checks = {c.fact.value: c for c in compare_facts(ours, others, {"tabloid": 0.3, "mixed": 0.3})}
+    assert {(c.fact.kind, c.fact.value) for c in checks.values()} == {("rupee_change", 5), ("rupee", 180)}
+    assert checks[5].status == "confirmed"  # measured (1.0) outweighs two tabloids (0.3 + 0.3)
+    assert checks[180].status == "confirmed" and "mixed" in checks[180].support
+
+
 def test_corroboration_flags_inflated_toll(sample_index):
     c = corroborate(BY_END("50-janako-mrityu"), sample_index)
     statuses = {(f["kind"], f["value"]): f["status"] for f in c.signal.details["facts"]}

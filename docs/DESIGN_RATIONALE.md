@@ -164,3 +164,18 @@ in later review rounds are marked with the round that changed them.
    sensational site does not become "confirmed".
 5. Hedged figures are kept and labelled, because "50 feared dead" is a
    claim about uncertainty, and the reader should see that.
+
+## 10. Confidence and weighted evidence (round 5)
+
+1. A missing measurement is not a good measurement. Signals now say how
+   much text they had, and the score trusts them accordingly.
+2. Repetition is not confirmation. Borrowing from truth-discovery methods
+   (where each source's reliability weights its votes), a source's vote on
+   a figure is weighted by how measured its own writing is. This is
+   deliberately simple and visible in the report; a learned reliability
+   per outlet can replace it once there is reviewed data.
+3. Some quantities have one true value per story (a death toll), others
+   legitimately have several (prices of different fuels), so agreement is
+   judged differently for each.
+4. Every calibration claim is a test over labelled samples, so a lexicon
+   or weight change that breaks the ordering fails CI.
