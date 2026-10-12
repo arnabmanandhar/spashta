@@ -129,13 +129,17 @@ def cmd_search(args) -> int:
 
 
 def cmd_eval(args) -> int:
-    from .evaluate import evaluate_retrieval
+    from .evaluate import compare_modes, evaluate_retrieval
     if args.questions:
         index = _index(args)
     else:
         index = Index(Store(":memory:"), get_embedder(args.embedder))
         index.add_many(sample_articles())
-    result = evaluate_retrieval(index, args.questions or sample_questions_path(), k=args.k, records_out=args.records)
+    questions = args.questions or sample_questions_path()
+    if args.compare:
+        print(json.dumps(compare_modes(index, questions, k=args.k), ensure_ascii=False, indent=2))
+        return 0
+    result = evaluate_retrieval(index, questions, k=args.k, records_out=args.records, mode=args.mode)
     print(json.dumps({k: v for k, v in result.items() if k != "per_question" or args.verbose}, ensure_ascii=False, indent=2))
     return 0
 
@@ -183,6 +187,8 @@ def build_parser() -> argparse.ArgumentParser:
     e.add_argument("questions", nargs="?")
     e.add_argument("-k", type=int, default=5)
     e.add_argument("--records", help="also write Anchor records (JSONL) here")
+    e.add_argument("--mode", choices=["hybrid", "lexical", "dense"], default="hybrid")
+    e.add_argument("--compare", action="store_true", help="ablation: lexical vs dense vs hybrid, with significance")
     e.set_defaults(func=cmd_eval)
     return p
 

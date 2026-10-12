@@ -18,4 +18,4 @@ from .store import Store
 __all__ = ["Article", "Chunk", "Fetcher", "FetchError", "Index", "IntegrityReport", "Signal", "Source", "Store",
            "analyze", "get_embedder"]
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

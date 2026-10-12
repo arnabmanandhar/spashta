@@ -31,6 +31,7 @@ from .models import Article, Chunk
 from .store import Store
 
 RRF_K = 60
+MODES = ("hybrid", "lexical", "dense")
 BM25_K1, BM25_B = 1.5, 0.75
 
 
@@ -121,7 +122,11 @@ class Index:
         return n
 
     def search(self, query: str, k: int = 10, exclude_articles: Iterable[str] = (),
-               exclude_sources: Iterable[str] = (), depth: int = 50) -> list[Hit]:
+               exclude_sources: Iterable[str] = (), depth: int = 50, mode: str = "hybrid") -> list[Hit]:
+        """mode: hybrid (default), lexical or dense; the last two exist for
+        ablations in `spashta eval --compare`."""
+        if mode not in MODES:
+            raise ValueError(f"mode must be one of {MODES}")
         if not self.chunks:
             return []
         skip_a, skip_s = set(exclude_articles), set(exclude_sources)
@@ -138,10 +143,12 @@ class Index:
         fused: dict[int, float] = defaultdict(float)
         lex_rank = {i: r for r, i in enumerate(lex_order, 1)}
         dense_rank = {i: r for r, i in enumerate(dense_order, 1)}
-        for i, r in lex_rank.items():
-            fused[i] += 1 / (RRF_K + r)
-        for i, r in dense_rank.items():
-            fused[i] += 1 / (RRF_K + r)
+        if mode != "dense":
+            for i, r in lex_rank.items():
+                fused[i] += 1 / (RRF_K + r)
+        if mode != "lexical":
+            for i, r in dense_rank.items():
+                fused[i] += 1 / (RRF_K + r)
         q_set = set(q_terms)
         ranked = sorted(fused, key=lambda i: (-fused[i], i))[:k]
         return [Hit(self.chunks[i], fused[i], lex_rank.get(i), dense_rank.get(i), float(cos[i]),
