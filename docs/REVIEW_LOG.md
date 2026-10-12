@@ -233,3 +233,33 @@ while both sensational petrol stories still show the Rs 20 conflict.
 **Result.** 69 tests, including a redirect to 127.0.0.1 refused before any
 request, a 429 with Retry-After recovered, a 304 served from cache, and
 २०८३ असोज २४ resolved to 2026-10-10.
+
+## Round 7 (v0.8.0): indexing that scales with what's new
+
+**Critique.** `Index.add_many` re-read the whole store, re-tokenised every
+chunk and rebuilt both BM25 indexes after every batch, so polling cost
+grew with corpus size, quadratically over time. BM25 scoring looped over
+every document for every query term. A benchmark was missing, so none of
+this was visible.
+
+**Change.**
+- `benchmarks/bench_retrieval.py`: synthetic corpus built from the samples'
+  sentences; times batch indexing and queries.
+- BM25 is an inverted index (postings per term, NumPy scoring over the
+  postings only) that supports appending.
+- `Index` appends incrementally; re-added articles tombstone their old
+  chunks; a full reload compacts only when tombstones exceed 20%.
+- Stemming, romanisation and phonetic keys are memoised (news vocabulary
+  is heavily repeated).
+
+**Result (hashing embedder, one CPU).**
+
+| Corpus | v0.7 build | v0.8 build | v0.8 query |
+|---|---|---|---|
+| 1,000 articles (1.7k chunks), batches of 50 | 29.5 s | 4.3 s | 3.0 ms |
+| 10,000 articles (17k chunks), batches of 100 | (not run: quadratic) | 45 s | 26 ms |
+
+The remaining build time is tokenisation and hashing per chunk, which is
+linear; a neural embedder will dominate it in real use. Past ~100k chunks
+the dense half should move to sqlite-vec or pgvector behind the same
+`search()`.

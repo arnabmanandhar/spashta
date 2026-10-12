@@ -55,48 +55,86 @@ def embedding_text(chunk: Chunk, title: str) -> str:
 
 
 class BM25:
+    """Okapi BM25 over an inverted index: scoring touches only the postings
+    of the query's terms, and documents can be appended without a rebuild."""
+
     def __init__(self):
-        self.docs: list[Counter] = []
-        self.df: Counter = Counter()
+        self.postings: dict[str, tuple[list[int], list[int]]] = {}
         self.lengths: list[int] = []
+        self._total = 0
 
     def add(self, terms: list[str]) -> None:
-        c = Counter(terms)
-        self.docs.append(c)
+        doc = len(self.lengths)
+        for t, tf in Counter(terms).items():
+            docs, tfs = self.postings.setdefault(t, ([], []))
+            docs.append(doc)
+            tfs.append(tf)
         self.lengths.append(len(terms))
-        self.df.update(c.keys())
+        self._total += len(terms)
 
     def scores(self, query_terms: list[str]) -> np.ndarray:
-        n = len(self.docs)
+        n = len(self.lengths)
         out = np.zeros(n, dtype=np.float32)
         if not n:
             return out
-        avg = (sum(self.lengths) / n) or 1.0
+        avg = (self._total / n) or 1.0
+        lengths = np.asarray(self.lengths, dtype=np.float32)
         for t in set(query_terms):
-            df = self.df.get(t)
-            if not df:
+            if t not in self.postings:
                 continue
-            idf = math.log(1 + (n - df + 0.5) / (df + 0.5))
-            for i, doc in enumerate(self.docs):
-                tf = doc.get(t)
-                if tf:
-                    out[i] += idf * tf * (BM25_K1 + 1) / (tf + BM25_K1 * (1 - BM25_B + BM25_B * self.lengths[i] / avg))
+            docs, tfs = self.postings[t]
+            idx = np.asarray(docs)
+            tf = np.asarray(tfs, dtype=np.float32)
+            idf = math.log(1 + (n - len(docs) + 0.5) / (len(docs) + 0.5))
+            out[idx] += idf * tf * (BM25_K1 + 1) / (tf + BM25_K1 * (1 - BM25_B + BM25_B * lengths[idx] / avg))
         return out
 
 
 class Index:
+    """In-memory search index over the store's chunks. Opening loads
+    everything once; add_many appends incrementally (a re-added article's
+    old chunks are tombstoned), so polling costs grow with what's new, not
+    with the size of the corpus."""
+
     def __init__(self, store: Store, embedder: Embedder):
         self.store, self.embedder = store, embedder
+        self.reload()
+
+    def _reset(self) -> None:
         self.chunks: list[Chunk] = []
+        self.alive: list[bool] = []
         self.terms: list[set[str]] = []
         self.bm25 = BM25()
         self.xbm25 = BM25()
-        self.vectors = np.zeros((0, 0), dtype=np.float32)
+        self._rows: list[np.ndarray] = []
+        self._matrix: Optional[np.ndarray] = None
+        self.rows_of: dict[str, list[int]] = {}
         self.article_source: dict[str, str] = {}
+        # Proper names learned from English text (capitalisation), as phonetic
+        # keys, so they also recognise the same names written in Devanagari.
         self.names: set[str] = set()
-        self.reload()
+
+    def _append(self, chunk: Chunk, vector: np.ndarray) -> None:
+        row = len(self.chunks)
+        t = L.content_terms(chunk.text)
+        self.chunks.append(chunk)
+        self.alive.append(True)
+        self.terms.append(set(t))
+        self.bm25.add(t)
+        self.xbm25.add(xling.xling_terms(chunk.text))
+        self._rows.append(np.asarray(vector, dtype=np.float32))
+        self._matrix = None
+        self.rows_of.setdefault(chunk.article_id, []).append(row)
+        self.names |= xling.name_keys(chunk.text)
+
+    @property
+    def vectors(self) -> np.ndarray:
+        if self._matrix is None:
+            self._matrix = np.vstack(self._rows) if self._rows else np.zeros((0, 1), dtype=np.float32)
+        return self._matrix
 
     def reload(self) -> None:
+        self._reset()
         chunks, embedders, blobs = self.store.chunks()
         stale = [i for i, (e, b) in enumerate(zip(embedders, blobs)) if e != self.embedder.name or b is None]
         if stale:  # vectors from another embedder can't be compared with ours
@@ -105,21 +143,9 @@ class Index:
             self.store.set_vectors(self.embedder.name, [(chunks[i].id, fresh[j]) for j, i in enumerate(stale)])
             for j, i in enumerate(stale):
                 blobs[i] = fresh[j].tobytes()
-        self.chunks = chunks
-        self.bm25 = BM25()
-        self.xbm25 = BM25()
-        self.terms = []
-        for c in chunks:
-            t = L.content_terms(c.text)
-            self.bm25.add(t)
-            self.xbm25.add(xling.xling_terms(c.text))
-            self.terms.append(set(t))
-        self.vectors = (np.vstack([np.frombuffer(b, dtype=np.float32) for b in blobs])
-                        if blobs else np.zeros((0, 1), dtype=np.float32))
+        for c, b in zip(chunks, blobs):
+            self._append(c, np.frombuffer(b, dtype=np.float32))
         self.article_source = self.store.article_sources()
-        # Proper names learned from English text (capitalisation), as phonetic
-        # keys, so they also recognise the same names written in Devanagari.
-        self.names = set().union(*(xling.name_keys(c.text) for c in chunks)) if chunks else set()
 
     def add(self, article: Article) -> list[Chunk]:
         self.add_many([article])
@@ -132,8 +158,15 @@ class Index:
             vectors = (self.embedder.embed([embedding_text(c, a.title) for c in chunks]) if chunks
                        else np.zeros((0, 1)))
             self.store.upsert_article(a, chunks, self.embedder.name, vectors)
+            for row in self.rows_of.pop(a.id, []):
+                self.alive[row] = False
+            for c, v in zip(chunks, vectors):
+                self._append(c, v)
+            self.article_source[a.id] = a.source
             n += 1
-        self.reload()
+        dead = self.alive.count(False)
+        if dead > 1000 and dead > len(self.alive) // 5:  # compact once tombstones pile up
+            self.reload()
         return n
 
     def search(self, query: str, k: int = 10, exclude_articles: Iterable[str] = (),
@@ -145,8 +178,10 @@ class Index:
         if not self.chunks:
             return []
         skip_a, skip_s = set(exclude_articles), set(exclude_sources)
-        allowed = np.array([c.article_id not in skip_a and self.article_source.get(c.article_id, "") not in skip_s
-                            for c in self.chunks])
+        allowed = np.array(self.alive)
+        if skip_a or skip_s:
+            allowed &= np.array([c.article_id not in skip_a and self.article_source.get(c.article_id, "") not in skip_s
+                                 for c in self.chunks])
         q_terms = L.content_terms(query)
         lex = self.bm25.scores(q_terms)
         lex[~allowed] = 0
