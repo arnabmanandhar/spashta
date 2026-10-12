@@ -24,8 +24,8 @@ import statistics
 from dataclasses import dataclass, field
 from typing import Optional
 
-from .. import lang as L
 from .. import story
+from ..facts import compare_facts, extract_facts
 from ..models import Article
 from ..retrieve import Hit, Index
 from .signals import Signal, sensationalism
@@ -48,11 +48,6 @@ class RelatedCoverage:
 class Corroboration:
     signal: Signal
     related: list[RelatedCoverage]
-
-
-def _key_numbers(a: Article) -> set[str]:
-    nums = L.numbers(a.title + " " + " ".join(L.sentences(a.body)[:3]))
-    return {n for n in nums if not (len(n) == 4 and n[:2] in ("19", "20"))}  # bare years say little
 
 
 def corroborate(article: Article, index: Index, k: int = 8) -> Corroboration:
@@ -85,13 +80,12 @@ def corroborate(article: Article, index: Index, k: int = 8) -> Corroboration:
         r.role = "same-owner" if story.outlet_group(o.source) == own_group else "copy"
     outlets = sorted({story.outlet_group(g[0].source) for g in groups})
 
-    key_numbers = _key_numbers(article)
-    elsewhere: set[str] = set()
-    for g in groups:
-        for o in g:
-            elsewhere |= L.numbers(o.text)
-    confirmed = sorted(key_numbers & elsewhere)
-    unconfirmed = sorted(key_numbers - elsewhere)
+    # One fact list per independent source (its copies add nothing new).
+    checks = compare_facts(extract_facts(article.text),
+                           {story.outlet_group(g[0].source): extract_facts(g[0].text) for g in groups})
+    confirmed = [c for c in checks if c.status == "confirmed"]
+    conflicts = [c for c in checks if c.status in ("conflict", "disputed")]
+    unreported = [c for c in checks if c.status == "unreported"]
     own = sensationalism(article).concern
     indep = [by_id[g[0].id].sensationalism for g in groups]
     others: Optional[float] = statistics.median(indep) if indep else None
@@ -105,10 +99,15 @@ def corroborate(article: Article, index: Index, k: int = 8) -> Corroboration:
     commentary = [r for r in related if r.role == "commentary"]
     if commentary:
         evidence.append("commentary on the story (not counted): " + ", ".join(sorted({r.source for r in commentary})))
+    for c in conflicts:
+        theirs = sorted({v for vs in c.dissent.values() for v in vs})
+        shown = ", ".join(str(int(v)) if v == int(v) else str(v) for v in theirs)
+        evidence.append(f"{c.status}: {c.fact.kind} {c.fact.shown} here; other sources report {shown}"
+                        f" ({', '.join(sorted(c.dissent))})")
     if confirmed:
-        evidence.append("figures matched in other coverage: " + ", ".join(confirmed))
-    if unconfirmed and groups:
-        evidence.append("figures not found in other coverage: " + ", ".join(unconfirmed))
+        evidence.append("figures confirmed elsewhere: " + ", ".join(f"{c.fact.kind} {c.fact.shown}" for c in confirmed))
+    if unreported and groups:
+        evidence.append("figures no other source reports: " + ", ".join(f"{c.fact.kind} {c.fact.shown}" for c in unreported))
     if others is not None and own - others >= 0.25:
         evidence.append(f"more sensational than other coverage ({own:.2f} vs median {others:.2f})")
 
@@ -116,14 +115,21 @@ def corroborate(article: Article, index: Index, k: int = 8) -> Corroboration:
         concern, summary = 0.5, "No independent coverage found in the index yet; the story is unverified, not disproven."
     else:
         breadth = min(1.0, len(groups) / 3)
-        figures = len(unconfirmed) / len(key_numbers) if key_numbers else 0.0
+        conflict_share = len(conflicts) / len(checks) if checks else 0.0
         tone = max(0.0, own - others) if others is not None else 0.0
-        concern = round(min(1.0, (1 - breadth) * 0.5 + figures * 0.3 + tone * 0.4), 3)
+        concern = round(min(1.0, (1 - breadth) * 0.4 + conflict_share * 0.6 + (0.3 if conflicts else 0) + tone * 0.3), 3)
         n = len(groups)
-        summary = (f"Reported by {n} independent source{'s' if n != 1 else ''}"
-                   + (f"; {len(unconfirmed)} figure{'s' if len(unconfirmed) != 1 else ''} not found elsewhere." if unconfirmed else "."))
+        summary = f"Reported by {n} independent source{'s' if n != 1 else ''}"
+        if conflicts:
+            summary += f"; {len(conflicts)} figure{'s' if len(conflicts) != 1 else ''} conflict{'s' if len(conflicts) == 1 else ''} with other coverage."
+        elif confirmed:
+            summary += f"; {len(confirmed)} figure{'s' if len(confirmed) != 1 else ''} confirmed."
+        else:
+            summary += "."
     return Corroboration(
         Signal("corroboration", concern, summary, evidence,
-               {"independent_sources": outlets, "confirmed_numbers": confirmed, "unconfirmed_numbers": unconfirmed,
+               {"independent_sources": outlets,
+                "facts": [{"kind": c.fact.kind, "value": c.fact.value, "hedged": c.fact.hedged, "status": c.status,
+                           "support": c.support, "dissent": c.dissent} for c in checks],
                 "own_sensationalism": own, "median_other_sensationalism": others}),
         related)
