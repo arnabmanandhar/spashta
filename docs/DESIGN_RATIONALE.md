@@ -190,3 +190,17 @@ in later review rounds are marked with the round that changed them.
 3. An endpoint that fetches arbitrary URLs is an SSRF and abuse target.
    The fetcher already refuses private addresses on every hop; the API adds
    rate limits, size limits, and keeps write operations behind a token.
+
+## 12. The model layer under attack (round 9)
+
+1. Spashta's input is, by definition, content written to persuade, and
+   some of it will be written to manipulate tools like Spashta. So the
+   model must treat article text as data, structurally (tags it cannot
+   forge) and by instruction, and its output is checked after the fact
+   (citations must point at passages it was actually given).
+2. A review must be repeatable to be trusted: same input, same answer.
+   Caching by the exact prompt and model gives that, and makes repeat
+   checks free.
+3. Retrieval stays cheap and explainable by default; the cross-encoder is
+   an optional precision layer over the top of the list, not a
+   replacement for the explainable rankings.

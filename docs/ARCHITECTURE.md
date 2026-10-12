@@ -54,7 +54,7 @@ round is in [REVIEW_LOG.md](REVIEW_LOG.md).
 | `ingest/__init__.py` | `collect_source` (thread-safe fetch), `ingest_sources` (parallel across hosts, one index pass) |
 | `ingest/boilerplate.py` | Per-site repeated-paragraph removal |
 | `chunk.py` | Headline+lead chunk, then sentence-packed chunks with one sentence of overlap |
-| `embed.py` | `HashingEmbedder` (offline), multilingual-e5 and bge-m3 via sentence-transformers |
+| `embed.py` | `HashingEmbedder` (offline), multilingual-e5 and bge-m3 via sentence-transformers, optional bge-reranker-v2-m3 cross-encoder |
 | `xling.py` | Devanagari romaniser, phonetic keys, bilingual news glossary: the offline cross-language bridge |
 | `retrieve.py` | BM25, cross-language BM25, dense cosine, RRF fusion, exclusions by article and outlet, related-coverage grouping |
 | `store.py` | SQLite: sources, articles, chunks with vectors, seen URLs |
@@ -63,7 +63,7 @@ round is in [REVIEW_LOG.md](REVIEW_LOG.md).
 | `facts.py` | Quantified facts in both languages (digits, number words, lakh/crore), fact kinds, hedging; per-figure agreement across independent sources |
 | `story.py` | Same-story test (event type, shared subject, time window), opinion detection, near-duplicate detection, outlet ownership groups |
 | `analysis/corroboration.py` | Candidates from retrieval, filtered to the same story, collapsed to independent sources; figures confirmed elsewhere; relative tone |
-| `analysis/llm_review.py` | Claim audit through `anchor.llm`, citations enforced |
+| `analysis/llm_review.py` | Claim audit through `anchor.llm`: untrusted text fenced, citations enforced, reviews cached, tokens and cost reported |
 | `report.py` | Weighted score, label, JSON and Markdown rendering, disclaimer in both languages |
 | `evaluate.py` | Retrieval metrics through `anchor.retrieval_metrics`; writes Anchor records |
 | `cli.py` | `spashta demo · sources · ingest · analyze · search · eval` |
@@ -89,6 +89,7 @@ copy:
 - `chunks(id, article_id, idx, text, lang, embedder, vector)`
 - `seen(url, article_id, seen_at)`: listed URLs already fetched
 - `http_cache(url, etag, last_modified, body, content_type)`: conditional GET for feeds and sitemaps
+- `review_cache(key, data, created_at)`: LLM reviews by prompt and model
 
 ## Report
 

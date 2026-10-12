@@ -98,8 +98,9 @@ def analyze(article: Article, index: Optional[Index] = None, use_llm: bool = Fal
         corr = corroborate(article, index)
         signals.append(corr.signal)
         if use_llm:
-            passages = [h for r in corr.related for h in r.passages][:12]
-            rev = review(article, passages, connection)
+            # Only independent coverage is evidence; copies and commentary are not.
+            passages = [h for r in corr.related if r.role == "independent" for h in r.passages][:12]
+            rev = review(article, passages, connection, cache=index.store)
             if rev.error is None:
                 signals.append(rev.signal)
     score = overall(signals)
