@@ -107,9 +107,18 @@ def test_llm_review_skips_without_key(monkeypatch):
 def test_retrieval_eval_uses_anchor_metrics(sample_index, tmp_path):
     out = tmp_path / "records.jsonl"
     result = evaluate_retrieval(sample_index, sample_questions_path(), k=5, records_out=out)
-    assert result["n"] == 8
+    assert result["n"] == 16
     assert result["mean"]["recall_at_k"] >= 0.7
-    assert out.read_text().count("\n") == 8
+    assert set(result["by_tag"]) >= {"ne", "en", "xl", "rom"}
+    assert out.read_text().count("\n") == 16
+
+
+def test_mode_ablation_reports_significance(sample_index):
+    from spashta.evaluate import compare_modes
+    r = compare_modes(sample_index, sample_questions_path())
+    assert set(r["mean"]) == {"hybrid", "lexical", "dense"}
+    assert r["mean"]["hybrid"]["ndcg_at_k"] >= r["mean"]["lexical"]["ndcg_at_k"]
+    assert "p_value" in r["significance"]["hybrid vs lexical"]
 
 
 def test_cli_demo_and_eval(capsys):

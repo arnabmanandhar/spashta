@@ -1,13 +1,189 @@
 {
-  "_note": "Retrieval evaluation questions over sample_articles.json. relevant_urls are the articles that answer each query. Includes Nepali, English and cross-language queries.",
+  "_note": "Retrieval evaluation over sample_articles.json. relevant_urls lists every article that answers the query (both languages). Tags: ne/en = query language, xl = relevant articles include the other language, para = paraphrased, rom = romanised Nepali.",
   "questions": [
-    {"query": "सिन्धुपाल्चोक पहिरोमा कति जनाको मृत्यु भयो?", "relevant_urls": ["https://khabar-sample.example/samachar/2083/06/101234", "https://sanoportal.example/2083/06/10/bhayanak-pahiro-50-janako-mrityu"]},
-    {"query": "How many people died in the Sindhupalchok landslide?", "relevant_urls": ["https://himal-times.example/news/landslide-sindhupalchok-12-dead-5-missing-rescue-continues"]},
-    {"query": "petrol price per litre Nepal Oil Corporation", "relevant_urls": ["https://himal-times.example/news/noc-raises-petrol-price-by-rs-5-per-litre-from-tonight", "https://daily-sample.example/opinion-news/corrupt-regime-slams-citizens-with-shocking-fuel-hike"]},
-    {"query": "पेट्रोलको मूल्य कति बढ्यो?", "relevant_urls": ["https://khabar-sample.example/samachar/2083/06/101180"]},
-    {"query": "एसईई नतिजा उत्तीर्ण प्रतिशत", "relevant_urls": ["https://khabar-sample.example/samachar/2083/06/101050"]},
-    {"query": "Nepal cricket win against UAE", "relevant_urls": ["https://himal-times.example/sports/nepal-beat-uae-by-six-wickets-in-tri-series-opener"]},
-    {"query": "पहिरोमा बेपत्ता व्यक्तिको खोजी", "relevant_urls": ["https://khabar-sample.example/samachar/2083/06/101234"]},
-    {"query": "diesel kerosene price Rs 165", "relevant_urls": ["https://himal-times.example/news/noc-raises-petrol-price-by-rs-5-per-litre-from-tonight"]}
+    {
+      "query": "सिन्धुपाल्चोक पहिरोमा कति जनाको मृत्यु भयो?",
+      "tags": [
+        "ne",
+        "xl"
+      ],
+      "relevant_urls": [
+        "https://khabar-sample.example/samachar/2083/06/101234",
+        "https://sanoportal.example/2083/06/10/bhayanak-pahiro-50-janako-mrityu",
+        "https://himal-times.example/news/landslide-sindhupalchok-12-dead-5-missing-rescue-continues",
+        "https://wire-sample.example/stories/sindhupalchok-landslide-kills-12-five-missing"
+      ]
+    },
+    {
+      "query": "How many people died in the Sindhupalchok landslide?",
+      "tags": [
+        "en",
+        "xl"
+      ],
+      "relevant_urls": [
+        "https://himal-times.example/news/landslide-sindhupalchok-12-dead-5-missing-rescue-continues",
+        "https://wire-sample.example/stories/sindhupalchok-landslide-kills-12-five-missing",
+        "https://khabar-sample.example/samachar/2083/06/101234",
+        "https://sanoportal.example/2083/06/10/bhayanak-pahiro-50-janako-mrityu"
+      ]
+    },
+    {
+      "query": "Myagdi landslide deaths",
+      "tags": [
+        "en",
+        "xl"
+      ],
+      "relevant_urls": [
+        "https://himal-times.example/news/myagdi-landslide-kills-three-two-houses-buried",
+        "https://khabar-sample.example/samachar/2082/04/090112"
+      ]
+    },
+    {
+      "query": "petrol price increase per litre",
+      "tags": [
+        "en",
+        "xl",
+        "para"
+      ],
+      "relevant_urls": [
+        "https://himal-times.example/news/noc-raises-petrol-price-by-rs-5-per-litre-from-tonight",
+        "https://daily-sample.example/opinion-news/corrupt-regime-slams-citizens-with-shocking-fuel-hike",
+        "https://khabar-sample.example/samachar/2083/06/101180",
+        "https://sanoportal.example/2083/06/09/petrol-ko-mulya-20-rupaiya"
+      ]
+    },
+    {
+      "query": "पेट्रोलको मूल्य कति बढ्यो?",
+      "tags": [
+        "ne",
+        "xl"
+      ],
+      "relevant_urls": [
+        "https://khabar-sample.example/samachar/2083/06/101180",
+        "https://sanoportal.example/2083/06/09/petrol-ko-mulya-20-rupaiya",
+        "https://himal-times.example/news/noc-raises-petrol-price-by-rs-5-per-litre-from-tonight",
+        "https://daily-sample.example/opinion-news/corrupt-regime-slams-citizens-with-shocking-fuel-hike"
+      ]
+    },
+    {
+      "query": "cooking gas cylinder price",
+      "tags": [
+        "en"
+      ],
+      "relevant_urls": [
+        "https://himal-times.example/business/lpg-cylinder-price-unchanged-this-month-noc-says"
+      ]
+    },
+    {
+      "query": "एसईई नतिजा उत्तीर्ण प्रतिशत",
+      "tags": [
+        "ne",
+        "xl"
+      ],
+      "relevant_urls": [
+        "https://khabar-sample.example/samachar/2083/06/101050",
+        "https://himal-times.example/education/see-results-published-48-percent-pass"
+      ]
+    },
+    {
+      "query": "SEE exam pass rate",
+      "tags": [
+        "en",
+        "xl"
+      ],
+      "relevant_urls": [
+        "https://himal-times.example/education/see-results-published-48-percent-pass",
+        "https://khabar-sample.example/samachar/2083/06/101050"
+      ]
+    },
+    {
+      "query": "नेपाल यूएई क्रिकेट जित",
+      "tags": [
+        "ne",
+        "xl"
+      ],
+      "relevant_urls": [
+        "https://khabar-sample.example/khelkud/2083/06/101210",
+        "https://himal-times.example/sports/nepal-beat-uae-by-six-wickets-in-tri-series-opener"
+      ]
+    },
+    {
+      "query": "Nepal cricket win against UAE",
+      "tags": [
+        "en",
+        "xl"
+      ],
+      "relevant_urls": [
+        "https://himal-times.example/sports/nepal-beat-uae-by-six-wickets-in-tri-series-opener",
+        "https://khabar-sample.example/khelkud/2083/06/101210"
+      ]
+    },
+    {
+      "query": "पहिरोमा बेपत्ता व्यक्तिको खोजी",
+      "tags": [
+        "ne",
+        "xl"
+      ],
+      "relevant_urls": [
+        "https://khabar-sample.example/samachar/2083/06/101234",
+        "https://himal-times.example/news/landslide-sindhupalchok-12-dead-5-missing-rescue-continues",
+        "https://wire-sample.example/stories/sindhupalchok-landslide-kills-12-five-missing"
+      ]
+    },
+    {
+      "query": "सिन्धुपाल्चोक सडक कालोपत्रे बजेट",
+      "tags": [
+        "ne"
+      ],
+      "relevant_urls": [
+        "https://khabar-sample.example/samachar/2083/06/101300"
+      ]
+    },
+    {
+      "query": "landslide early warning system",
+      "tags": [
+        "en"
+      ],
+      "relevant_urls": [
+        "https://blog-sample.example/2026/10/why-nepal-needs-landslide-early-warning-systems-now"
+      ]
+    },
+    {
+      "query": "sindhupalchok ma pahiro",
+      "tags": [
+        "rom",
+        "xl"
+      ],
+      "relevant_urls": [
+        "https://khabar-sample.example/samachar/2083/06/101234",
+        "https://sanoportal.example/2083/06/10/bhayanak-pahiro-50-janako-mrityu",
+        "https://himal-times.example/news/landslide-sindhupalchok-12-dead-5-missing-rescue-continues",
+        "https://wire-sample.example/stories/sindhupalchok-landslide-kills-12-five-missing"
+      ]
+    },
+    {
+      "query": "petrol ko mulya badhyo",
+      "tags": [
+        "rom",
+        "xl"
+      ],
+      "relevant_urls": [
+        "https://khabar-sample.example/samachar/2083/06/101180",
+        "https://sanoportal.example/2083/06/09/petrol-ko-mulya-20-rupaiya",
+        "https://himal-times.example/news/noc-raises-petrol-price-by-rs-5-per-litre-from-tonight",
+        "https://daily-sample.example/opinion-news/corrupt-regime-slams-citizens-with-shocking-fuel-hike"
+      ]
+    },
+    {
+      "query": "diesel kerosene price Rs 165",
+      "tags": [
+        "en",
+        "xl"
+      ],
+      "relevant_urls": [
+        "https://himal-times.example/news/noc-raises-petrol-price-by-rs-5-per-litre-from-tonight",
+        "https://khabar-sample.example/samachar/2083/06/101180"
+      ]
+    }
   ]
 }
