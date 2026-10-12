@@ -63,6 +63,19 @@ export GEMINI_API_KEY=...
 spashta analyze https://example.com/news/some-article --llm
 ```
 
+## Web API and page
+
+```bash
+pip install -e ".[api]"
+export SPASHTA_ADMIN_TOKEN=change-me        # enables adding sources and ingesting over HTTP
+uvicorn spashta.api:app --port 8000
+```
+
+Open http://localhost:8000 for a bilingual page (paste a link or the text
+of a story), or call the JSON API: `POST /api/analyze`, `GET /api/search`,
+`GET|POST /api/sources`, `POST /api/ingest`. Requests are rate limited per
+client, and user-supplied URLs can never reach private or local addresses.
+
 ## Documentation
 
 - [docs/CASE_STUDIES.md](docs/CASE_STUDIES.md): every ingestion, retrieval
