@@ -12,7 +12,11 @@ Spashta has to do three things well:
 
 This document lays out the realistic options for each part, scores them,
 and records the choice. [ARCHITECTURE.md](ARCHITECTURE.md) describes the
-system built from those choices.
+system built from those choices, [DESIGN_RATIONALE.md](DESIGN_RATIONALE.md)
+gives the reasoning step by step, and [REVIEW_LOG.md](REVIEW_LOG.md)
+records how ten rounds of critique refined the first build (notably a
+third, cross-language ranking in retrieval, same-story and source
+independence checks, and fact-level comparison across outlets).
 
 Scores below are 1 (poor) to 5 (good). "Coverage" means how many Nepali and
 English outlets the option actually reaches today.

@@ -63,6 +63,12 @@ _HI_MARKERS = frozenset("है हैं में के की था थे 
 _NE_MARKERS = frozenset("छ छन् हो ले लाई को मा थियो पनि र यो त्यो".split())
 
 
+def clean(text: str) -> str:
+    """What gets stored and shown: NFC, joiners and odd quotes fixed, but the
+    publisher's digits kept (१२ stays १२). Analysis calls normalize()."""
+    return unicodedata.normalize("NFC", text or "").translate(_FOLD)
+
+
 def normalize(text: str) -> str:
     text = unicodedata.normalize("NFC", text or "")
     return text.translate(_FOLD).translate(DEVANAGARI_DIGITS)
@@ -162,4 +168,4 @@ def numbers(text: str) -> set[str]:
 
 
 def sentences(text: str) -> list[str]:
-    return [s.strip() for s in SENTENCE_END_RE.split(normalize(text)) if s and s.strip()]
+    return [s.strip() for s in SENTENCE_END_RE.split(clean(text)) if s and s.strip()]

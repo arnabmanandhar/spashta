@@ -21,10 +21,18 @@ reader can.
 2. **Understands Nepali and English.** Unicode and digit normalisation,
    language detection, a Nepali tokenizer that strips case markers
    (सरकारले → सरकार), and numbers that match across scripts (१,२०० = 1200).
-3. **Retrieves related coverage (RAG).** Hybrid search: BM25 for names
-   and numbers plus multilingual embeddings (multilingual-e5 or bge-m3) for
-   meaning and cross-language matches, fused with Reciprocal Rank Fusion.
-4. **Reports integrity signals:** headline consistency, sensationalism,
+3. **Retrieves related coverage (RAG).** Hybrid search fusing three
+   rankings with Reciprocal Rank Fusion: BM25 for names and numbers,
+   multilingual embeddings (multilingual-e5 or bge-m3) for meaning, and an
+   offline cross-language index (romanisation, phonetic keys, a bilingual
+   news glossary) so Nepali, English and romanised Nepali meet; optional
+   cross-encoder reranking.
+4. **Finds the same story elsewhere.** Coverage counts only if it reports
+   the same event (event type, shared subject, within days) from an
+   independent source: wire copies and same-owner outlets count once,
+   opinion pieces are set aside. Figures (deaths, prices, percentages) are
+   compared across sources, and conflicts are shown.
+5. **Reports integrity signals:** headline consistency, sensationalism,
    sourcing, framing, corroboration across outlets, and optionally a
    claim-by-claim audit by any LLM (through
    [Anchor](https://github.com/arnabmanandhar/anchor)), where every claim
@@ -33,7 +41,7 @@ reader can.
 ## Quickstart
 
 ```bash
-pip install -e ".[extract]"     # trafilatura for best text extraction
+pip install -e ".[extract,nepali]"   # trafilatura extraction, Bikram Sambat dates
 spashta demo                    # synthetic sample articles, no network, no key
 spashta eval                    # retrieval metrics on the bilingual sample questions
 ```
@@ -76,6 +84,17 @@ of a story), or call the JSON API: `POST /api/analyze`, `GET /api/search`,
 `GET|POST /api/sources`, `POST /api/ingest`. Requests are rate limited per
 client, and user-supplied URLs can never reach private or local addresses.
 
+## Measuring it
+
+```bash
+spashta eval --compare        # retrieval: lexical vs dense vs cross-language vs hybrid, with significance
+spashta eval --signals        # each signal's AUC against labelled articles
+python benchmarks/bench_retrieval.py --articles 2000
+```
+
+The bundled corpus is synthetic and small; see
+[docs/ANNOTATION.md](docs/ANNOTATION.md) for building a real labelled set.
+
 ## Documentation
 
 - [docs/CASE_STUDIES.md](docs/CASE_STUDIES.md): every ingestion, retrieval
@@ -84,6 +103,7 @@ client, and user-supplied URLs can never reach private or local addresses.
 - [docs/DESIGN_RATIONALE.md](docs/DESIGN_RATIONALE.md): the reasoning
   behind each chosen mechanism
 - [docs/REVIEW_LOG.md](docs/REVIEW_LOG.md): each critique-and-improve round
+- [docs/ANNOTATION.md](docs/ANNOTATION.md): how to build a real evaluation set
 
 ## Tests
 

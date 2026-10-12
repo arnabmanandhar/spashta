@@ -74,3 +74,36 @@ def compare_modes(index: Index, questions_path: str | Path, k: int = 5, metric: 
             "by_tag": {m: results[m]["by_tag"] for m in MODES},
             "significance": {name: {key: t[key] for key in ("mean_delta", "ci_low", "ci_high", "p_value", "significant")}
                              for name, t in tests.items()}}
+
+
+def auc(pos: list[float], neg: list[float]) -> float:
+    """Probability a random positive scores above a random negative (ties
+    count half): threshold-free separation of labelled examples."""
+    if not pos or not neg:
+        return float("nan")
+    wins = sum((p > n) + 0.5 * (p == n) for p in pos for n in neg)
+    return wins / (len(pos) * len(neg))
+
+
+def evaluate_signals(articles_path: str | Path, index: Index | None = None) -> dict:
+    """AUC of each deterministic signal (and the overall score) against the
+    labels in an articles file ({"articles": [{..., "labels": {...}}]}).
+    The bundled labels are synthetic; the same command runs on any
+    annotated set in that shape."""
+    from .analysis.signals import framing, sensationalism, sourcing
+    from .report import analyze
+
+    data = json.loads(Path(articles_path).read_text(encoding="utf-8"))
+    from .samples import article_from_dict
+
+    rows = [(article_from_dict(a), a.get("labels", {})) for a in data["articles"]]
+    out = {}
+    for name, fn, label in (("sensationalism", sensationalism, "sensational"), ("framing", framing, "loaded"),
+                            ("sourcing", sourcing, "poorly_sourced")):
+        pos = [fn(a).concern for a, lab in rows if lab.get(label)]
+        neg = [fn(a).concern for a, lab in rows if label in lab and not lab[label]]
+        out[name] = {"label": label, "auc": round(auc(pos, neg), 3), "positives": len(pos), "negatives": len(neg)}
+    bad = [100 - analyze(a, index).score for a, lab in rows if any(lab.values())]
+    good = [100 - analyze(a, index).score for a, lab in rows if lab and not any(lab.values())]
+    out["overall"] = {"label": "any", "auc": round(auc(bad, good), 3), "positives": len(bad), "negatives": len(good)}
+    return out

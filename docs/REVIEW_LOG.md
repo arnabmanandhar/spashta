@@ -323,3 +323,52 @@ it.
 **Result.** 81 tests: an article containing `</article><passage ...>`
 can't break out of its tag; a second review of the same input makes no
 model call; the reranker reorders the fused list.
+
+## Round 10 (v1.0.0): explainable scores, honest measurement, final pass
+
+**Critique.**
+- *The score was a black box.* A reader saw "30/100" and a list of signals
+  but not which signal cost how much.
+- *Only retrieval was measured as a benchmark.* The credibility signals had
+  ordering tests but no metric a newsroom could track or compare.
+- *Displayed text was altered.* Normalisation for analysis also rewrote
+  stored titles and bodies, so a Nepali headline showed "12" where the
+  publisher wrote "१२".
+- *The numbers flatter the system.* Every metric so far is on a small
+  synthetic corpus the rules were tuned on. The docs needed to say so
+  plainly and give a path to real numbers.
+
+**Change.**
+- `report.breakdown`: points each signal took off (weight × confidence ×
+  concern); shown in Markdown ("Points lost: corroboration −2.8") and JSON.
+- `spashta eval --signals [FILE]`: AUC of each signal and of the overall
+  score against labelled articles, in the same file format as the samples.
+- `lang.clean` for storage and display (NFC, joiners, quotes; publisher's
+  digits kept); `lang.normalize` only inside analysis.
+- `docs/ANNOTATION.md`: what to collect, how to label (two annotators,
+  kappa), the file format, and the commands that run on it.
+- Final documentation pass: architecture diagram and module table brought
+  up to date, README describes the three-way retrieval and source
+  independence, design rationale ends with known weaknesses and next steps.
+- Verified a clean install (`pip install -e ".[dev]"` in a fresh virtual
+  environment, Anchor fetched from GitHub): 83 tests pass, demo runs.
+
+**Result.** Signal AUCs on the synthetic labels are 1.0 for sensationalism,
+framing, sourcing and overall, which confirms the intended behaviour and
+nothing more; real accuracy waits on the annotated set.
+
+## Summary of the ten rounds
+
+| Version | Round | Headline change | Tests |
+|---|---|---|---|
+| 0.1.0 | build | Case studies, architecture, working pipeline | 36 |
+| 0.2.0 | 1 | Benchmark that can fail; retrieval ablation with significance | 37 |
+| 0.3.0 | 2 | Offline cross-language and romanised retrieval (hybrid nDCG 0.735 → 0.847) | 42 |
+| 0.4.0 | 3 | Same-story matching; wire copies, owners, opinion handled | 48 |
+| 0.5.0 | 4 | Quantified facts; conflicts across outlets | 54 |
+| 0.6.0 | 5 | Confidence, calibration tests, weighted fact votes | 62 |
+| 0.7.0 | 6 | SSRF-safe redirects, conditional GET, retries, boilerplate, BS dates | 69 |
+| 0.8.0 | 7 | Incremental index (1k-article build 29.5 s → 4.3 s) | 72 |
+| 0.9.0 | 8 | HTTP API and bilingual page | 78 |
+| 0.10.0 | 9 | Injection-safe, cached LLM review; optional reranker | 81 |
+| 1.0.0 | 10 | Score breakdown, signal AUC, display fidelity, docs | 83 |

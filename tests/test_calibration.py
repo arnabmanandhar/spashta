@@ -45,3 +45,20 @@ def test_scores_order(sample_index):
     good = [analyze(a, sample_index).score for a in ARTICLES if not any(LABELS[a.url].values())]
     bad = [analyze(a, sample_index).score for a in ARTICLES if LABELS[a.url]["sensational"]]
     assert min(good) > max(bad)
+
+
+def test_breakdown_explains_score(sample_index):
+    from spashta.report import breakdown
+    r = analyze(next(a for a in ARTICLES if LABELS[a.url]["sensational"]), sample_index)
+    lost = sum(b["points_lost"] for b in breakdown(r.signals))
+    assert abs((100 - r.score) - lost) <= 0.5
+    assert "breakdown" in r.to_dict() and "Points lost" in r.to_markdown()
+
+
+def test_signal_auc_command(sample_index):
+    from spashta.evaluate import auc, evaluate_signals
+    from spashta.samples import sample_articles_path
+    assert auc([0.9, 0.8], [0.1, 0.8]) == 0.875
+    result = evaluate_signals(sample_articles_path(), sample_index)
+    assert set(result) == {"sensationalism", "framing", "sourcing", "overall"}
+    assert all(v["auc"] == 1.0 for v in result.values())

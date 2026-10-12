@@ -204,3 +204,36 @@ in later review rounds are marked with the round that changed them.
 3. Retrieval stays cheap and explainable by default; the cross-encoder is
    an optional precision layer over the top of the list, not a
    replacement for the explainable rankings.
+
+
+## 13. What is still weak, and what comes next (round 10)
+
+Being explicit about limits is part of the design, because users will act
+on these reports.
+
+1. **No real-world accuracy numbers yet.** All measured results come from
+   a synthetic corpus written by the developers, and the glossary,
+   lexicons and thresholds were tuned while looking at it. Perfect AUCs on
+   it prove the code does what was intended, not that it works on real
+   news. [ANNOTATION.md](ANNOTATION.md) describes the labelled set needed
+   next.
+2. **Lexicons are short.** High precision, low recall by design. They
+   should grow from annotated false negatives, each new term with a test.
+3. **Same-story matching is rule based.** It needs a shared event type and
+   subject. Stories about events outside the glossary's event concepts
+   will not be matched until the glossary grows; a multilingual embedder
+   with an event-similarity threshold, validated on the annotated set, is
+   the planned complement.
+4. **Romanised Nepali** works through phonetic keys and covers common
+   spellings, not every variant; a learned transliteration model
+   (for example from the Dakshina dataset family) would do better.
+5. **Bikram Sambat conversion** depends on an optional package.
+6. **Outlet ownership** data is a short hand-made list.
+7. **Model-based pieces are optional by design.** Nepali-specific encoders
+   (NepBERTa and similar) fine-tuned on the annotated set are the natural
+   next step for the sensationalism and framing signals, but only once
+   there is data to show they beat the explainable baseline.
+
+Next surfaces, in order: a hosted instance of the API and page; a browser
+extension that reports on the article being read; a Viber/Messenger bot
+that accepts a forwarded link.

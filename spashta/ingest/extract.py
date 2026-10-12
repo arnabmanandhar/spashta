@@ -181,8 +181,8 @@ def extract_article(html: str, url: str, use_trafilatura: bool = True) -> Articl
     detected = L.detect_language(text)
     return Article(
         url=final_url,
-        title=L.normalize(unescape(title)),
-        body=L.normalize(body.strip()),
+        title=L.clean(unescape(title)),
+        body=L.clean(body.strip()),
         source=host_of(final_url),
         lang=detected if detected != "unknown" else (page.lang or "unknown"),
         published=published,
