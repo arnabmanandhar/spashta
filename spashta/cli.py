@@ -34,7 +34,11 @@ from .store import Store
 
 
 def _index(args) -> Index:
-    return Index(Store(args.db), get_embedder(args.embedder))
+    reranker = None
+    if os.environ.get("SPASHTA_RERANKER"):
+        from .embed import CrossEncoderReranker
+        reranker = CrossEncoderReranker(os.environ["SPASHTA_RERANKER"])
+    return Index(Store(args.db), get_embedder(args.embedder), reranker)
 
 
 def _print_report(report, as_json: bool) -> None:

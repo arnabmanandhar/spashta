@@ -92,3 +92,22 @@ def get_embedder(name: str = "hashing") -> Embedder:
         model_id, prefixes = MODELS[name]
         return SentenceTransformerEmbedder(model_id, name, prefixes)
     raise ValueError(f"unknown embedder {name!r}; choose from hashing, {', '.join(MODELS)}")
+
+
+class CrossEncoderReranker:
+    """Second-stage reranker: scores (query, passage) pairs jointly, which
+    is more precise than comparing separate embeddings. BAAI/bge-reranker-v2-m3
+    is multilingual (Nepali included) and pairs naturally with bge-m3. Slow
+    on CPU, so it only reorders the top of the fused list."""
+
+    def __init__(self, model_id: str = "BAAI/bge-reranker-v2-m3"):
+        try:
+            from sentence_transformers import CrossEncoder
+        except ImportError as e:
+            raise RuntimeError("the reranker needs sentence-transformers: pip install 'spashta[ml]'") from e
+        self.model = CrossEncoder(model_id)
+        self.name = model_id
+
+    def score(self, query: str, texts: list[str]) -> list[float]:
+        q = L.normalize(query)
+        return [float(x) for x in self.model.predict([(q, L.normalize(t)) for t in texts], show_progress_bar=False)]

@@ -34,6 +34,7 @@ from .store import Store
 
 RRF_K = 60
 MODES = ("hybrid", "lexical", "dense", "xling")
+RERANK_DEPTH = 30
 BM25_K1, BM25_B = 1.5, 0.75
 
 
@@ -97,8 +98,9 @@ class Index:
     old chunks are tombstoned), so polling costs grow with what's new, not
     with the size of the corpus."""
 
-    def __init__(self, store: Store, embedder: Embedder):
+    def __init__(self, store: Store, embedder: Embedder, reranker=None):
         self.store, self.embedder = store, embedder
+        self.reranker = reranker  # optional: anything with score(query, texts) -> list[float]
         self._lock = threading.RLock()  # searches and appends from API worker threads
         self.reload()
 
@@ -217,9 +219,15 @@ class Index:
             for r, i in enumerate(xl_order, 1):
                 fused[i] += 1 / (RRF_K + r)
         q_set = set(q_terms)
-        ranked = sorted(fused, key=lambda i: (-fused[i], i))[:k]
-        return [Hit(self.chunks[i], fused[i], lex_rank.get(i), dense_rank.get(i), float(cos[i]),
-                    sorted(q_set & self.terms[i])) for i in ranked]
+        ranked = sorted(fused, key=lambda i: (-fused[i], i))
+        scores = dict(fused)
+        if self.reranker is not None and mode == "hybrid" and ranked:
+            top = ranked[:max(RERANK_DEPTH, k)]
+            rs = self.reranker.score(query, [self.chunks[i].text for i in top])
+            scores.update(zip(top, rs))
+            ranked = sorted(top, key=lambda i: (-scores[i], i)) + ranked[len(top):]
+        return [Hit(self.chunks[i], scores[i], lex_rank.get(i), dense_rank.get(i), float(cos[i]),
+                    sorted(q_set & self.terms[i])) for i in ranked[:k]]
 
     def candidate_articles(self, article: Article, k: int = 10) -> list[tuple[str, list[Hit]]]:
         """Articles from other outlets that retrieval ranks close to this
