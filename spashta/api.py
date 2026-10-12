@@ -121,7 +121,7 @@ def create_app(index: Optional[Index] = None, fetcher: Optional[Fetcher] = None,
         elif req.body:
             title = (req.title or "").strip() or req.body.strip().split("\n", 1)[0][:200]
             text = f"{title}\n{req.body}"
-            article = Article(url="text:", title=L.normalize(title), body=L.normalize(req.body), lang=L.detect_language(text))
+            article = Article(url="text:", title=L.clean(title), body=L.clean(req.body), lang=L.detect_language(text))
         else:
             raise HTTPException(422, "Send a url, or a title and body.")
         return analyze(article, index, use_llm=req.llm).to_dict()

@@ -34,4 +34,4 @@ jobs:
           cache: pip
       - run: pip install -e ".[dev]"
       - run: pytest -q
-      - run: spashta demo > /dev/null && spashta eval
+      - run: spashta demo > /dev/null && spashta eval --compare && spashta eval --signals

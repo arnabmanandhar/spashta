@@ -41,7 +41,9 @@ def test_extract_article_nepali():
     a = extract_article(fixture("article_ne.html"), "https://news.example/2083/06/101234?utm_source=fb", use_trafilatura=False)
     assert a.url == "https://news.example/2083/06/101234"
     assert a.title.startswith("सिन्धुपाल्चोकमा")
-    assert "12 जनाको" in a.body  # digits folded
+    assert "१२ जनाको" in a.body  # the publisher's digits are kept for display
+    from spashta import lang as L
+    assert "12" in L.numbers(a.body)  # and folded for analysis
     assert "विज्ञापन" not in a.body and "फुटर" not in a.body
     assert a.lang == "ne"
     assert a.author == "नमुना संवाददाता"

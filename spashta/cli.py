@@ -29,7 +29,7 @@ from .ingest import fetch_article, ingest_sources, resolve
 from .models import Article, Source, host_of
 from .report import analyze
 from .retrieve import Index
-from .samples import sample_articles, sample_questions_path, seed_sources
+from .samples import sample_articles, sample_articles_path, sample_questions_path, seed_sources
 from .store import Store
 
 
@@ -101,7 +101,7 @@ def _article_from_args(args, fetcher: Fetcher) -> Article:
     if args.text is not None:
         text = sys.stdin.read() if args.text == "-" else args.text
         title, _, body = text.strip().partition("\n")
-        return Article(url="text:", title=L.normalize(title), body=L.normalize(body.strip()), lang=L.detect_language(text))
+        return Article(url="text:", title=L.clean(title), body=L.clean(body.strip()), lang=L.detect_language(text))
     if args.file:
         from .ingest import extract_article
         with open(args.file, encoding="utf-8") as f:
@@ -140,6 +140,11 @@ def cmd_eval(args) -> int:
         index = Index(Store(":memory:"), get_embedder(args.embedder))
         index.add_many(sample_articles())
     questions = args.questions or sample_questions_path()
+    if args.signals:
+        from .evaluate import evaluate_signals
+        print(json.dumps(evaluate_signals(args.signals if args.signals != "samples" else sample_articles_path(), index),
+                         ensure_ascii=False, indent=2))
+        return 0
     if args.compare:
         print(json.dumps(compare_modes(index, questions, k=args.k), ensure_ascii=False, indent=2))
         return 0
@@ -194,6 +199,7 @@ def build_parser() -> argparse.ArgumentParser:
     e.add_argument("--records", help="also write Anchor records (JSONL) here")
     e.add_argument("--mode", choices=["hybrid", "lexical", "dense", "xling"], default="hybrid")
     e.add_argument("--compare", action="store_true", help="ablation: lexical vs dense vs hybrid, with significance")
+    e.add_argument("--signals", nargs="?", const="samples", help="AUC of each signal against labelled articles (default: samples)")
     e.set_defaults(func=cmd_eval)
     return p
 

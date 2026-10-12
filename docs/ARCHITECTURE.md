@@ -14,29 +14,33 @@ round is in [REVIEW_LOG.md](REVIEW_LOG.md).
    robots.txt sitemap? ─► /sitemap.xml? ─► same-site links  │
         │                                                   │
         ▼                                                   ▼
- ingest.discover.list_articles ─► fetch.Fetcher ─► ingest.extract.extract_article
-   (robots.txt, per-host delay, SSRF guard,          (JSON-LD, OpenGraph, trafilatura
-    size cap, charset)                                 or built-in fallback)
+ ingest.collect_source ──► fetch.Fetcher ──► ingest.extract.extract_article ──► ingest.boilerplate
+   (parallel across hosts)   (robots.txt, per-host delay,   (JSON-LD, OpenGraph,     (per-site repeated
+                              SSRF check on every hop,       trafilatura or fallback, paragraphs removed)
+                              retries, conditional GET)      BS dates via bsdate)
                                                             │
-                                         lang.normalize / detect_language
+                               lang.clean (stored) · lang.normalize (analysed) · detect_language
                                                             │
                                                             ▼
-                                  chunk.chunk_article (headline+lead, sentence packs)
+                                 chunk.chunk_article (headline+lead, sentence packs)
                                                             │
-                         ┌──────────────────────────────────┴───────────────┐
-                         ▼                                                  ▼
-                BM25 over lang.content_terms                   embed.* vectors (hashing / e5 / bge-m3)
-                         └──────────────── retrieve.Index (RRF) ────────────┘
-                                                │                    store.Store (SQLite)
+          ┌──────────────────────────────┬──────────────────┴──────────────────────┐
+          ▼                              ▼                                         ▼
+  BM25 over content_terms      BM25 over xling terms                  embed.* vectors, contextual
+  (Nepali stems, English)      (romanised phonetic keys,             (hashing / e5 / bge-m3)
+                                glossary concepts)
+          └──────────────────────────────┴─── retrieve.Index: RRF ─────────────────┘
+                                                │  (+ optional bge-reranker-v2-m3)    store.Store (SQLite)
                                                 ▼
-     analysis.signals (headline, sensationalism, sourcing, framing)   deterministic
-     analysis.corroboration (related coverage, figures, tone)          retrieval-grounded
-     analysis.llm_review (claims audited against passages)             optional, any provider via Anchor
+   analysis.signals         headline (facts, hedges) · sensationalism · sourcing · framing   deterministic
+   analysis.corroboration   candidates ─► story.same_story ─► independent sources ─►        retrieval-grounded
+                            facts.compare_facts (weighted votes) · relative tone
+   analysis.llm_review      claims audited against independent passages (fenced, cached)    optional, via Anchor
                                                 │
                                                 ▼
-                                   report.IntegrityReport (score, label, evidence)
+                     report.IntegrityReport (score, label, points lost per signal, evidence)
                                                 │
-                                     cli · api (FastAPI + page) · evaluate (Anchor metrics)
+                     cli · api (FastAPI + page) · evaluate (Anchor metrics, signal AUC)
 ```
 
 ## Modules
@@ -93,9 +97,10 @@ copy:
 
 ## Report
 
-Each signal is `{name, concern 0..1, summary, evidence[], details{}}`.
-The score is `100 × (1 − weighted mean concern)`; the label is "Few",
-"Some" or "Many warning signs". The report always carries the disclaimer
+Each signal is `{name, concern 0..1, confidence 0..1, summary, evidence[],
+details{}}`. The score is `100 × (1 − weighted mean concern)`, with each
+signal's weight scaled by its confidence; `breakdown` lists the points
+each signal took off. The label is "Few", "Some" or "Many warning signs". The report always carries the disclaimer
 that it describes presentation and sourcing, not truth.
 
 ## Testing

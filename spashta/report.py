@@ -43,7 +43,7 @@ class IntegrityReport:
     def to_dict(self) -> dict:
         return {
             "url": self.url, "title": self.title, "source": self.source, "lang": self.lang,
-            "score": self.score, "label": self.label,
+            "score": self.score, "label": self.label, "breakdown": breakdown(self.signals),
             "signals": [asdict(s) for s in self.signals],
             "related": [{"url": r.url, "title": r.title, "source": r.source, "lang": r.lang,
                          "sensationalism": r.sensationalism, "role": r.role, "reason": r.reason,
@@ -58,6 +58,9 @@ class IntegrityReport:
     def to_markdown(self) -> str:
         out = [f"# Integrity report: {self.title}", "", f"{self.url}  ", f"Outlet: {self.source or 'unknown'} · Language: {self.lang}",
                "", f"**{self.score}/100 · {self.label}**", ""]
+        lost = [b for b in breakdown(self.signals) if b["points_lost"] >= 0.5]
+        if lost:
+            out += ["Points lost: " + ", ".join(f"{b['signal']} −{b['points_lost']:g}" for b in sorted(lost, key=lambda b: -b["points_lost"])), ""]
         for s in self.signals:
             conf = "" if s.confidence >= 0.8 else f" · confidence {s.confidence:.2f}"
             out.append(f"## {s.name.capitalize()} · concern {s.concern:.2f}{conf}")
@@ -80,14 +83,20 @@ def label_for(score: int) -> str:
     return "Many warning signs"
 
 
+def breakdown(signals: list[Signal]) -> list[dict]:
+    """How many points each signal took off the score, so the number is
+    never a black box: points lost sum to 100 - score (up to rounding)."""
+    w = {s.name: WEIGHTS.get(s.name, 0.1) * s.confidence for s in signals}
+    total = sum(w.values()) or 1.0
+    return [{"signal": s.name, "weight": round(w[s.name] / total, 3), "concern": s.concern,
+             "points_lost": round(100 * w[s.name] * s.concern / total, 1)} for s in signals]
+
+
 def overall(signals: list[Signal]) -> int:
     """Weighted mean concern, each signal's weight scaled by its confidence,
     so a signal with little to go on counts less instead of counting as
     "no concern"."""
-    w = {s.name: WEIGHTS.get(s.name, 0.1) * s.confidence for s in signals}
-    total = sum(w.values())
-    concern = sum(w[s.name] * s.concern for s in signals) / total if total else 0.0
-    return round(100 * (1 - concern))
+    return round(100 - sum(b["points_lost"] for b in breakdown(signals)))
 
 
 def analyze(article: Article, index: Optional[Index] = None, use_llm: bool = False, connection=None) -> IntegrityReport:
