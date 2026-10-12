@@ -12,4 +12,5 @@ spashta.db
 *.db-shm
 .env
 .env.*
+!.env.example
 .DS_Store

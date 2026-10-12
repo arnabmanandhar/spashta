@@ -1,0 +1,34 @@
+name: Deploy to Hugging Face Space
+
+# Pushes this repository to a Hugging Face Docker Space.
+# Needs: repository secret HF_TOKEN (a write token) and repository variable HF_SPACE (e.g. arnabmanandhar/spashta).
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: ${{ vars.HF_SPACE != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Push to the Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_SPACE: ${{ vars.HF_SPACE }}
+        run: |
+          set -euo pipefail
+          out=$(mktemp -d)
+          git archive HEAD | tar -x -C "$out"
+          cd "$out"
+          # A Space reads its settings from front matter at the top of README.md.
+          { printf -- '---\ntitle: Spashta\nemoji: 📰\ncolorFrom: gray\ncolorTo: red\nsdk: docker\napp_port: 7860\npinned: false\n---\n\n'; cat README.md; } > README.space.md
+          mv README.space.md README.md
+          git init -q -b main
+          git add -A
+          git -c user.name=deploy -c user.email=deploy@users.noreply.github.com commit -qm "Deploy ${GITHUB_SHA::7}"
+          git push -f "https://user:${HF_TOKEN}@huggingface.co/spaces/${HF_SPACE}" main

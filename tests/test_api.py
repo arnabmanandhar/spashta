@@ -50,3 +50,21 @@ def test_admin_requires_token(client):
 def test_rate_limit(client):
     codes = [client.get("/api/search", params={"q": "x"}).status_code for _ in range(7)]
     assert codes[:5] == [200] * 5 and codes[-1] == 429
+
+
+def test_llm_review_gated(sample_index):
+    app = create_app(index=sample_index, admin_token="s3cret", rate_per_min=50, public_llm=False, llm_daily_limit=1)
+    c = TestClient(app)
+    body = {"title": "Petrol price up", "body": "Prices rose.", "llm": True}
+    assert c.post("/api/analyze", json=body).status_code == 403
+    auth = {"Authorization": "Bearer s3cret"}
+    assert c.post("/api/analyze", json=body, headers=auth).status_code == 200
+    assert c.post("/api/analyze", json=body, headers=auth).status_code == 429  # daily budget of 1
+
+
+def test_rate_limit_behind_proxy(sample_index, monkeypatch):
+    monkeypatch.setenv("SPASHTA_TRUST_PROXY", "1")
+    c = TestClient(create_app(index=sample_index, rate_per_min=2))
+    a, b = {"X-Forwarded-For": "1.1.1.1"}, {"X-Forwarded-For": "2.2.2.2"}
+    assert [c.get("/api/search", params={"q": "x"}, headers=a).status_code for _ in range(3)] == [200, 200, 429]
+    assert c.get("/api/search", params={"q": "x"}, headers=b).status_code == 200

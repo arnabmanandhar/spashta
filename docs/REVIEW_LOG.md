@@ -372,3 +372,27 @@ nothing more; real accuracy waits on the annotated set.
 | 0.9.0 | 8 | HTTP API and bilingual page | 78 |
 | 0.10.0 | 9 | Injection-safe, cached LLM review; optional reranker | 81 |
 | 1.0.0 | 10 | Score breakdown, signal AUC, display fidelity, docs | 83 |
+
+## v1.1.0: public hosting without leaking keys
+
+**Critique.** A public instance would let any visitor send `"llm": true`
+and spend the owner's model quota. Behind a host's proxy every visitor
+shares one address, so the per-client rate limit becomes one limit for
+everyone. There was no container image or deploy path, and no written
+rule for where keys go.
+
+**Changes.**
+- LLM review on the API needs the admin token unless
+  `SPASHTA_PUBLIC_LLM=1`; a daily budget (`SPASHTA_LLM_DAILY_LIMIT`, 50)
+  caps model calls across all callers.
+- Global rate limit alongside the per-client one; `SPASHTA_TRUST_PROXY`
+  rate-limits by the visitor address in `X-Forwarded-For`.
+- `Dockerfile` (Hugging Face Docker Space, port 7860, no secrets baked in),
+  `.dockerignore`, `.env.example`.
+- GitHub Actions: deploy to a Space on push (`HF_TOKEN` secret), and a
+  scheduled ingest against the hosted API (admin token as a secret). Both
+  are inert until configured.
+- `docs/DEPLOY.md`: where secrets live, how to check history for keys,
+  free hosting steps.
+
+Tests: 85.

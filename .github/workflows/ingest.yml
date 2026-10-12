@@ -1,0 +1,26 @@
+name: Scheduled ingest
+
+# Asks the hosted instance to poll its sources. The free Space's disk is
+# temporary, so this also refills the index after a restart.
+# Needs: repository variable SPASHTA_URL (e.g. https://arnabmanandhar-spashta.hf.space)
+# and repository secret SPASHTA_ADMIN_TOKEN (the same value as on the Space).
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 */3 * * *"
+
+permissions: {}
+
+jobs:
+  ingest:
+    if: ${{ vars.SPASHTA_URL != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger ingest
+        env:
+          TOKEN: ${{ secrets.SPASHTA_ADMIN_TOKEN }}
+          URL: ${{ vars.SPASHTA_URL }}
+        run: |
+          curl -fsS --max-time 600 -X POST "$URL/api/ingest" \
+            -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+            -d '{"limit": 20}' | head -c 2000

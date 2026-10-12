@@ -17,6 +17,15 @@ Configuration (environment)
   SPASHTA_DB, SPASHTA_EMBEDDER   as for the CLI
   SPASHTA_ADMIN_TOKEN            required for admin endpoints (Bearer); unset = admin disabled
   SPASHTA_RATE_PER_MIN           analyze/search requests per client per minute (default 20)
+  SPASHTA_GLOBAL_RATE_PER_MIN    analyze/search requests per minute from everyone together (default 120)
+  SPASHTA_PUBLIC_LLM             "1" lets anyone request the LLM claim review; default off, so only
+                                 requests with the admin token can spend the model key's quota
+  SPASHTA_LLM_DAILY_LIMIT        LLM reviews per UTC day across all callers (default 50; cached reviews are free)
+  SPASHTA_TRUST_PROXY            "1" when behind a host's proxy (Hugging Face, Render, Fly): rate limit by
+                                 the client address in X-Forwarded-For instead of the proxy's
+
+Model keys (GEMINI_API_KEY, GROQ_API_KEY, ...) are read from the environment
+by anchor.llm and never appear in responses, errors or logs.
 
 Fetching user-supplied URLs always refuses private and local addresses,
 and every redirect hop is checked (see fetch.py).
@@ -82,13 +91,41 @@ class RateLimiter:
             q.append(now)
 
 
+class DailyBudget:
+    """At most `limit` uses per UTC day, shared by every caller."""
+
+    def __init__(self, limit: int):
+        self.limit, self.day, self.used = limit, "", 0
+        self.lock = threading.Lock()
+
+    def take(self) -> bool:
+        today = time.strftime("%Y-%m-%d", time.gmtime())
+        with self.lock:
+            if today != self.day:
+                self.day, self.used = today, 0
+            if self.used >= self.limit:
+                return False
+            self.used += 1
+            return True
+
+
+def _flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
+
+
 def create_app(index: Optional[Index] = None, fetcher: Optional[Fetcher] = None,
-               admin_token: Optional[str] = None, rate_per_min: Optional[int] = None) -> FastAPI:
+               admin_token: Optional[str] = None, rate_per_min: Optional[int] = None,
+               public_llm: Optional[bool] = None, llm_daily_limit: Optional[int] = None) -> FastAPI:
     app = FastAPI(title="Spashta", version=__version__, description="News integrity reports for Nepali and English.")
     state = {"index": index, "lock": threading.Lock()}
     fetcher = fetcher or Fetcher(allow_private=False)
     token = admin_token if admin_token is not None else os.environ.get("SPASHTA_ADMIN_TOKEN", "")
     limiter = RateLimiter(rate_per_min or int(os.environ.get("SPASHTA_RATE_PER_MIN", "20")))
+    global_limiter = RateLimiter(int(os.environ.get("SPASHTA_GLOBAL_RATE_PER_MIN", "120")))
+    public_llm = _flag("SPASHTA_PUBLIC_LLM") if public_llm is None else public_llm
+    llm_budget = DailyBudget(llm_daily_limit if llm_daily_limit is not None
+                             else int(os.environ.get("SPASHTA_LLM_DAILY_LIMIT", "50")))
+    trust_proxy = _flag("SPASHTA_TRUST_PROXY")
 
     def get_index() -> Index:
         with state["lock"]:
@@ -97,13 +134,24 @@ def create_app(index: Optional[Index] = None, fetcher: Optional[Fetcher] = None,
                                        get_embedder(os.environ.get("SPASHTA_EMBEDDER", "hashing")))
             return state["index"]
 
+    def client_key(request: Request) -> str:
+        if trust_proxy:
+            forwarded = request.headers.get("x-forwarded-for", "")
+            if forwarded:
+                return forwarded.split(",")[0].strip()
+        return request.client.host if request.client else "unknown"
+
     def rate(request: Request) -> None:
-        limiter.check(request.client.host if request.client else "unknown")
+        global_limiter.check("*")
+        limiter.check(client_key(request))
+
+    def is_admin(authorization: str) -> bool:
+        return bool(token) and hmac.compare_digest(authorization.removeprefix("Bearer ").strip(), token)
 
     def admin(authorization: str = Header(default="")) -> None:
         if not token:
             raise HTTPException(403, "Admin endpoints are disabled (set SPASHTA_ADMIN_TOKEN).")
-        if not hmac.compare_digest(authorization.removeprefix("Bearer ").strip(), token):
+        if not is_admin(authorization):
             raise HTTPException(401, "Invalid admin token.")
 
     @app.get("/api/health")
@@ -111,7 +159,13 @@ def create_app(index: Optional[Index] = None, fetcher: Optional[Fetcher] = None,
         return {"version": __version__, "embedder": index.embedder.name, **index.store.count()}
 
     @app.post("/api/analyze", dependencies=[Depends(rate)])
-    def analyze_endpoint(req: AnalyzeRequest, index: Index = Depends(get_index)) -> dict:
+    def analyze_endpoint(req: AnalyzeRequest, index: Index = Depends(get_index),
+                         authorization: str = Header(default="")) -> dict:
+        if req.llm:
+            if not (public_llm or is_admin(authorization)):
+                raise HTTPException(403, "The LLM review is not enabled for public requests on this server.")
+            if not llm_budget.take():
+                raise HTTPException(429, "Today's LLM review budget is used up; try again tomorrow.")
         if req.url:
             try:
                 article = fetch_article(req.url, fetcher)

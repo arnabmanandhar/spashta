@@ -84,6 +84,11 @@ of a story), or call the JSON API: `POST /api/analyze`, `GET /api/search`,
 `GET|POST /api/sources`, `POST /api/ingest`. Requests are rate limited per
 client, and user-supplied URLs can never reach private or local addresses.
 
+To host it publicly for free (Hugging Face Spaces with a Dockerfile and
+GitHub Actions deploy), and keep model keys out of the repo and away from
+quota abuse, see [docs/DEPLOY.md](docs/DEPLOY.md). Settings are listed in
+[.env.example](.env.example).
+
 ## Measuring it
 
 ```bash
@@ -104,6 +109,7 @@ The bundled corpus is synthetic and small; see
   behind each chosen mechanism
 - [docs/REVIEW_LOG.md](docs/REVIEW_LOG.md): each critique-and-improve round
 - [docs/ANNOTATION.md](docs/ANNOTATION.md): how to build a real evaluation set
+- [docs/DEPLOY.md](docs/DEPLOY.md): free public hosting and keeping keys safe
 
 ## Tests
 
