@@ -117,3 +117,37 @@ count.
 
 **Still wrong (next round).** "5" and "8" in the Nepali story are reported
 as not found elsewhere, but the English coverage says "five" and "eight".
+
+## Round 4 (v0.5.0): facts, not bare numbers
+
+**Critique.** Corroboration compared sets of digits. That missed the most
+common case in bilingual coverage, numbers written as words ("five
+missing" vs "५ जना बेपत्ता"), so a careful Nepali report was marked as
+having unconfirmed figures. It also could not see a *conflict*: the
+sensational story's "50 dead" and the police figure of 12 were just two
+numbers, and "Rs 20" in a loaded story was "confirmed" because another
+sensational site repeated it.
+
+**Change.** `facts.py`:
+- Quantities from digits in both scripts, English and Nepali number words
+  (छ and एक/one left out on purpose: they are mostly "is" and "a"), and
+  hundred/thousand/lakh/crore/million/arab scaling.
+- Each figure gets the nearest fact kind from the glossary (death, missing,
+  injured, house, percent, rupee, wicket...), preferring specific kinds over
+  "people" and never crossing a clause boundary ("12 dead, five missing" is
+  two facts).
+- Hedged figures ("आशंका", "feared", "up to") are marked.
+- `compare_facts`: per figure, which independent sources report the same
+  value for the same kind and which report a different value; majority
+  decides confirmed or conflict, a tie is disputed.
+
+**Result.**
+
+| Article | v0.4 corroboration | v0.5 corroboration |
+|---|---|---|
+| Measured Nepali landslide | "2 figures not found elsewhere" | 4 figures confirmed (deaths 12, missing 5, houses 8, injured 7) |
+| Sensational "50 dead" | "1 figure not found elsewhere" | conflict: deaths 50 (hedged) vs 12 from 2 sources |
+| Loaded "Rs 20 hike" | "20" confirmed by another sensational site | conflict: Rs 20 vs 5 from 2 sources, 1 supporter |
+
+Overall scores now separate cleanly: measured Nepali report 97/100, the
+sensational one 50, the loaded English one 14.

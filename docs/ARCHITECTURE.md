@@ -58,6 +58,7 @@ round is in [REVIEW_LOG.md](REVIEW_LOG.md).
 | `store.py` | SQLite: sources, articles, chunks with vectors, seen URLs |
 | `analysis/lexicons.py` | English and Nepali word lists (sensational, attribution, anonymous, loaded, hedges) |
 | `analysis/signals.py` | Deterministic signals with evidence |
+| `facts.py` | Quantified facts in both languages (digits, number words, lakh/crore), fact kinds, hedging; per-figure agreement across independent sources |
 | `story.py` | Same-story test (event type, shared subject, time window), opinion detection, near-duplicate detection, outlet ownership groups |
 | `analysis/corroboration.py` | Candidates from retrieval, filtered to the same story, collapsed to independent sources; figures confirmed elsewhere; relative tone |
 | `analysis/llm_review.py` | Claim audit through `anchor.llm`, citations enforced |

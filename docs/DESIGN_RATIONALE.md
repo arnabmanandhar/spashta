@@ -146,3 +146,21 @@ in later review rounds are marked with the round that changed them.
    independent, so they collapse; commentary is not a witness, so it is
    listed but not counted.
 5. Each match carries its reason, so a reader can reject a wrong match.
+
+## 9. Comparing facts (round 4)
+
+1. Two outlets disagreeing on a death toll is the single most useful thing
+   Spashta can show a reader, and it needs no language model.
+2. A figure is only comparable with its meaning: 12 deaths and 12 houses
+   are different facts. In both languages the counted thing sits next to
+   the number (Nepali puts it after: १२ जनाको मृत्यु; English either side:
+   "killed 12", "12 dead"), so the nearest fact word in the same clause is
+   a reliable label, with generic words ("people", जना) losing to specific
+   ones.
+3. Number words matter because translations and English style guides
+   spell out small numbers.
+4. Agreement is decided by independent sources, by majority, so a figure
+   repeated only by sites that copy each other or by one other
+   sensational site does not become "confirmed".
+5. Hedged figures are kept and labelled, because "50 feared dead" is a
+   claim about uncertainty, and the reader should see that.
