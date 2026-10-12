@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS chunks (
     idx INTEGER, text TEXT, lang TEXT, embedder TEXT, vector BLOB
 );
 CREATE INDEX IF NOT EXISTS chunks_article ON chunks(article_id);
+CREATE TABLE IF NOT EXISTS http_cache (url TEXT PRIMARY KEY, etag TEXT, last_modified TEXT, body BLOB, content_type TEXT);
 CREATE TABLE IF NOT EXISTS seen (url TEXT PRIMARY KEY, article_id TEXT, seen_at TEXT DEFAULT (datetime('now')));
 """
 
@@ -82,6 +83,16 @@ class Store:
             r["articles"] = counts.get(host_of(r["url"]), 0)
         return rows
 
+    def get_cached(self, url: str):
+        r = self._db.execute("SELECT etag, last_modified, body, content_type FROM http_cache WHERE url = ?", (url,)).fetchone()
+        return (r[0], r[1], r[2], r[3] or "") if r else None
+
+    def put_cached(self, url: str, etag, last_modified, body: bytes, content_type: str) -> None:
+        if not etag and not last_modified:
+            return
+        with self._lock, self._db:
+            self._db.execute("INSERT OR REPLACE INTO http_cache VALUES (?,?,?,?,?)", (url, etag, last_modified, body, content_type))
+
     # --------------------------------------------------------- articles
 
     def has_article(self, article_id: str) -> bool:
@@ -115,6 +126,10 @@ class Store:
     def article(self, article_id: str) -> Optional[Article]:
         r = self._db.execute("SELECT * FROM articles WHERE id = ?", (article_id,)).fetchone()
         return self._article(r) if r else None
+
+    def articles_from(self, source: str, limit: int = 20) -> list[Article]:
+        return [self._article(r) for r in self._db.execute(
+            "SELECT * FROM articles WHERE source = ? ORDER BY fetched_at DESC LIMIT ?", (source, limit))]
 
     def articles(self, limit: int = 100) -> list[Article]:
         return [self._article(r) for r in self._db.execute(

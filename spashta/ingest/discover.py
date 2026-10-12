@@ -74,7 +74,7 @@ def resolve(source: Source, fetcher: Fetcher) -> Source:
 
 
 def _sitemap_walk(url: str, fetcher: Fetcher, limit: int, depth: int = 0) -> list[FeedItem]:
-    text = fetcher.get(url).text
+    text = fetcher.get(url, conditional=True).text
     sm = parse_sitemap(text)
     if sm.entries:
         return sitemap_items(text)[:limit]
@@ -94,7 +94,7 @@ def list_articles(source: Source, fetcher: Fetcher, limit: int = 50) -> list[Fee
     if source.kind == "unresolved" or not source.endpoint:
         source = resolve(source, fetcher)
     if source.kind == "feed":
-        r = fetcher.get(source.endpoint)
+        r = fetcher.get(source.endpoint, conditional=True)
         items = parse_feed(r.text, r.url)
     elif source.kind == "sitemap":
         items = _sitemap_walk(source.endpoint, fetcher, limit)

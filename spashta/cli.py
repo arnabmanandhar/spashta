@@ -25,7 +25,7 @@ import sys
 from . import lang as L
 from .embed import get_embedder
 from .fetch import Fetcher, FetchError
-from .ingest import fetch_article, ingest_source, resolve
+from .ingest import fetch_article, ingest_sources, resolve
 from .models import Article, Source, host_of
 from .report import analyze
 from .retrieve import Index
@@ -82,15 +82,15 @@ def cmd_sources(args) -> int:
 
 def cmd_ingest(args) -> int:
     index = _index(args)
-    fetcher = Fetcher(delay_s=args.delay)
-    failed = 0
-    for s in index.store.sources(enabled_only=True):
-        r = ingest_source(s, fetcher, index, limit=args.limit)
-        failed += bool(r.errors and not r.added)
+    fetcher = Fetcher(delay_s=args.delay, cache=index.store)
+    sources = index.store.sources(enabled_only=True)
+    results = ingest_sources(sources, fetcher, index, limit=args.limit, workers=args.workers)
+    for s, r in zip(sources, results):
         print(f"{r.kind or '?':<8} found {r.found:>3} · added {r.added:>3} · skipped {r.skipped:>3}"
               f" · errors {len(r.errors):>2}  {s.url}")
     print(json.dumps(index.store.count()))
-    return 1 if failed and failed == len(index.store.sources(enabled_only=True)) else 0
+    failed = sum(bool(r.errors and not r.added) for r in results)
+    return 1 if sources and failed == len(sources) else 0
 
 
 def _article_from_args(args, fetcher: Fetcher) -> Article:
@@ -167,6 +167,7 @@ def build_parser() -> argparse.ArgumentParser:
     i = sub.add_parser("ingest", help="poll sources and index new articles")
     i.add_argument("--limit", type=int, default=30, help="articles per source")
     i.add_argument("--delay", type=float, default=1.0, help="seconds between requests to one host")
+    i.add_argument("--workers", type=int, default=4, help="sources fetched in parallel")
     i.set_defaults(func=cmd_ingest)
 
     a = sub.add_parser("analyze", help="integrity report for one article")

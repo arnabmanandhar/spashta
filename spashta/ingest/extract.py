@@ -24,6 +24,7 @@ from typing import Optional
 from urllib.parse import urljoin
 
 from .. import lang as L
+from ..bsdate import parse_bs_date
 from ..models import Article, host_of
 from .feeds import parse_date
 
@@ -174,6 +175,8 @@ def extract_article(html: str, url: str, use_trafilatura: bool = True) -> Articl
     final_url = page.canonical or url
     published = parse_date(ld.get("datePublished") or page.meta.get("article:published_time")
                            or page.meta.get("pubdate") or page.meta.get("date"))
+    if published is None:  # many Nepali pages show only a Bikram Sambat date
+        published = parse_bs_date(" ".join([page.meta.get("article:published_time", ""), title, body[:600]]))
     text = f"{title}\n{body}"
     detected = L.detect_language(text)
     return Article(
