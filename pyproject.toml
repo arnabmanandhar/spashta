@@ -45,3 +45,4 @@ ignore = ["E501", "S101", "B008", "B905", "UP007", "UP045", "E731"]  # B008: Fas
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S", "B"]
 "benchmarks/*" = ["S"]
+"spashta/dataset/*" = ["S311"]  # seeded sampling for reproducibility, not security
