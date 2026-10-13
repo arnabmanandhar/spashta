@@ -1,0 +1,7 @@
+{
+  "_note": "Concern levels at which each signal's summary changes. 'some' is where a report starts warning (the threshold precision and recall are reported at); 'strong' is the second step. Calibrate on labelled data with `spashta eval --gold` and copy its suggested values here, then re-run the evaluation and report the numbers at the values you ship.",
+  "headline": {"some": 0.25, "strong": 0.55},
+  "sensationalism": {"some": 0.25, "strong": 0.6},
+  "sourcing": {"some": 0.3, "strong": 0.6},
+  "framing": {"some": 0.25, "strong": 0.6}
+}

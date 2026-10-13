@@ -150,8 +150,27 @@ def cmd_search(args) -> int:
     return 0
 
 
+def cmd_eval_gold(args) -> int:
+    from .dataset import labels as LB
+    from .dataset import signal_eval, snapshot
+    if not args.snapshot:
+        build_parser().error("--gold needs --snapshot (the labelled articles' text)")
+    records = {r["id"]: r for r in snapshot.read_records(args.snapshot)}
+    gold = LB.read(args.gold)
+    report = signal_eval.evaluate(records, gold)
+    if args.pairs:
+        report["corroboration"] = signal_eval.evaluate_pairs(records, LB.read(args.pairs))
+    report["suggested_thresholds"] = signal_eval.suggested_thresholds(report)
+    if args.write_thresholds:
+        with open(args.write_thresholds, "w", encoding="utf-8") as f:
+            json.dump(report["suggested_thresholds"], f, indent=2)
+    return _emit(report, args.out)
+
+
 def cmd_eval(args) -> int:
     from .evaluate import compare_modes, evaluate_retrieval
+    if args.gold:
+        return cmd_eval_gold(args)
     if args.questions:
         index = _index(args)
     else:
@@ -231,6 +250,10 @@ def build_parser() -> argparse.ArgumentParser:
     e.add_argument("--compare", action="store_true", help="ablation: lexical vs dense vs hybrid, with significance")
     e.add_argument("--ablate-xling", action="store_true", help="remove romanisation, phonetic keys, glossary one at a time")
     e.add_argument("--out", help="also write the result as JSON (for `spashta results`)")
+    e.add_argument("--gold", help="gold article labels (JSONL): AUC, precision/recall and calibrated thresholds per signal")
+    e.add_argument("--snapshot", help="snapshot holding the labelled articles (with --gold)")
+    e.add_argument("--pairs", help="gold same-event pair labels (with --gold): matcher precision/recall")
+    e.add_argument("--write-thresholds", help="with --gold: write suggested thresholds here (copy into data/thresholds.json)")
     e.add_argument("--signals", nargs="?", const="samples", help="AUC of each signal against labelled articles (default: samples)")
     e.set_defaults(func=cmd_eval)
 

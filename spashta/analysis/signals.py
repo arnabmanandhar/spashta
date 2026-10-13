@@ -24,9 +24,12 @@ the overall score instead of counting as "no concern".
 
 from __future__ import annotations
 
+import json
 import math
 import re
 from dataclasses import dataclass, field
+from functools import lru_cache
+from importlib import resources
 
 from .. import lang as L
 from ..facts import extract_facts
@@ -42,6 +45,18 @@ class Signal:
     evidence: list[str] = field(default_factory=list)
     details: dict = field(default_factory=dict)
     confidence: float = 1.0  # how much the overall score should trust this signal
+
+
+@lru_cache(maxsize=1)
+def thresholds() -> dict[str, dict[str, float]]:
+    """Concern levels where each signal's summary changes (data/thresholds.json)."""
+    data = json.loads((resources.files("spashta") / "data" / "thresholds.json").read_text(encoding="utf-8"))
+    return {k: v for k, v in data.items() if not k.startswith("_")}
+
+
+def _level(name: str, concern: float) -> int:
+    t = thresholds()[name]
+    return 0 if concern < t["some"] else 1 if concern < t["strong"] else 2
 
 
 def _saturate(x: float, scale: float) -> float:
@@ -109,8 +124,8 @@ def sensationalism(a: Article) -> Signal:
         evidence.append(f"exclamation marks: {title.count('!')} in headline, {a.body.count('!')} in body")
     if caps:
         evidence.append("capitals in headline: " + ", ".join(caps))
-    summary = ("Measured wording." if concern < 0.25 else
-               "Some emotive or clickbait wording." if concern < 0.6 else "Heavily sensational wording.")
+    summary = ("Measured wording.", "Some emotive or clickbait wording.", "Heavily sensational wording.")[
+        _level("sensationalism", concern)]
     return Signal("sensationalism", concern, summary, evidence,
                   {"headline_terms": len(head), "body_terms": len(body), "body_terms_per_100_words": round(per100, 2),
                    "structures": structures}, confidence=1.0 if head or structures else _length_confidence(words, 80))
@@ -133,12 +148,8 @@ def sourcing(a: Article) -> Signal:
     evidence += [f"anonymous or unverified: {t}" for t in dict.fromkeys(anonymous)][:6]
     if quotes:
         evidence.append(f"direct quotes: {quotes}")
-    if concern < 0.3:
-        summary = "Claims are regularly attributed to named sources."
-    elif concern < 0.6:
-        summary = "Some claims lack clear attribution."
-    else:
-        summary = "Few claims are attributed, or sources are mostly anonymous."
+    summary = ("Claims are regularly attributed to named sources.", "Some claims lack clear attribution.",
+               "Few claims are attributed, or sources are mostly anonymous.")[_level("sourcing", concern)]
     if confidence < 0.6:
         summary += " (Short text: low confidence.)"
     return Signal("sourcing", concern, summary, evidence,
@@ -156,9 +167,8 @@ def framing(a: Article) -> Signal:
     first_person = _FIRST_PERSON.findall(L.normalize(a.text))
     per100 = (len(loaded) + 0.5 * len(first_person)) * 100 / _word_count(a.text)
     concern = _saturate(per100, 1.0)
-    summary = ("Neutral wording." if concern < 0.25 else
-               "Some loaded or opinionated wording." if concern < 0.6 else
-               "Strongly loaded or opinionated wording for a news report.")
+    summary = ("Neutral wording.", "Some loaded or opinionated wording.",
+               "Strongly loaded or opinionated wording for a news report.")[_level("framing", concern)]
     evidence = [f"loaded: {t}" for t in dict.fromkeys(loaded)][:10]
     if first_person:
         evidence.append(f"first-person opinion: {len(first_person)}")
@@ -198,9 +208,8 @@ def headline_consistency(a: Article) -> Signal:
         evidence.append(f"headline states {f.kind} {f.shown} as fact; the story says it is uncertain")
     if escalation:
         evidence.append("headline uses sensational words the story itself doesn't: " + ", ".join(dict.fromkeys(head_sens)))
-    summary = ("The story supports its headline." if concern < 0.25 else
-               "The headline goes partly beyond the story." if concern < 0.55 else
-               "The headline is not supported by the story.")
+    summary = ("The story supports its headline.", "The headline goes partly beyond the story.",
+               "The headline is not supported by the story.")[_level("headline", concern)]
     return Signal("headline", concern, summary, evidence,
                   {"headline_term_coverage": round(coverage, 3), "lead_coverage": round(lead_cov, 3),
                    "unsupported_figures": [f"{f.kind} {f.shown}" for f in unsupported],
