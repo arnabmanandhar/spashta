@@ -97,8 +97,24 @@ spashta eval --signals        # each signal's AUC against labelled articles
 python benchmarks/bench_retrieval.py --articles 2000
 ```
 
-The bundled corpus is synthetic and small; see
-[docs/ANNOTATION.md](docs/ANNOTATION.md) for building a real labelled set.
+The bundled corpus is synthetic and small. For real numbers, the
+`dataset`, `qrels` and `results` commands take a real corpus from
+collection to a published dataset and a results table:
+
+```bash
+spashta ingest --since 2026-09-15                     # backfill weeks of news from sitemaps
+spashta dataset freeze snapshots/v1                   # hashed, reproducible snapshot
+spashta dataset sample snapshots/v1 -o sample.jsonl   # stratified ~400 articles, pilot + double-annotated subsets
+spashta dataset labeltool snapshots/v1 sample.jsonl --batch pilot -o pilot.html   # labelling page, no install
+spashta dataset agreement snapshots/v1 --a mine.jsonl --b theirs.jsonl            # Cohen's kappa per signal
+spashta qrels pool queries.jsonl -o pool.jsonl        # pooled relevance judgments (BM25, dense, xling, hybrid)
+spashta eval questions.json --compare --ablate-xling  # by query language, with intervals
+spashta eval --gold gold.jsonl --snapshot snapshots/v1   # AUC, precision/recall, calibrated thresholds
+spashta dataset release snapshots/v1 release/ --labels gold.jsonl   # public dataset without article text
+spashta results ... -o RESULTS.md                     # every table, and a resume line with your numbers
+```
+
+The full runbook is [docs/EVIDENCE.md](docs/EVIDENCE.md).
 
 ## Documentation
 
@@ -108,7 +124,10 @@ The bundled corpus is synthetic and small; see
 - [docs/DESIGN_RATIONALE.md](docs/DESIGN_RATIONALE.md): the reasoning
   behind each chosen mechanism
 - [docs/REVIEW_LOG.md](docs/REVIEW_LOG.md): each critique-and-improve round
-- [docs/ANNOTATION.md](docs/ANNOTATION.md): how to build a real evaluation set
+- [docs/SIGNAL_RULES.md](docs/SIGNAL_RULES.md): the scoring rules in plain words
+- [docs/EVIDENCE.md](docs/EVIDENCE.md): the runbook from real data to published numbers
+- [docs/ANNOTATION.md](docs/ANNOTATION.md): the annotation guide (v2) and procedure
+- [docs/ERROR_ANALYSIS.md](docs/ERROR_ANALYSIS.md): template for real failure cases
 - [docs/DEPLOY.md](docs/DEPLOY.md): free public hosting and keeping keys safe
 
 ## Tests

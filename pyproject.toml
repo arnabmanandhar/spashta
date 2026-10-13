@@ -29,7 +29,7 @@ spashta = "spashta.cli:main"
 packages = ["spashta", "spashta.ingest", "spashta.analysis", "spashta.dataset"]
 
 [tool.setuptools.package-data]
-spashta = ["data/*.json", "data/*.html"]
+spashta = ["data/*.json", "data/*.html", "data/*.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -92,7 +92,7 @@ def test_cli_labeltool_check_agreement_gold(tmp_path, capsys):
     for name, rows in (("a", a), ("b", b)):
         (tmp_path / f"{name}.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
     assert main(["dataset", "check", str(tmp_path / "snap"), str(tmp_path / "a.jsonl")]) == 0
-    assert main(["dataset", "agreement", str(tmp_path / "snap"), str(tmp_path / "a.jsonl"), str(tmp_path / "b.jsonl"),
+    assert main(["dataset", "agreement", str(tmp_path / "snap"), "--a", str(tmp_path / "a.jsonl"), "--b", str(tmp_path / "b.jsonl"),
                  "--markdown"]) == 0
     assert main(["dataset", "gold", str(tmp_path / "a.jsonl"), "-o", str(tmp_path / "gold.jsonl")]) == 0
     assert "| sensationalism |" in capsys.readouterr().out

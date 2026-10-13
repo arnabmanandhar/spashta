@@ -19,3 +19,5 @@ spashta.db
 snapshots/
 private/
 *.full.jsonl
+/data/
+labels/*.html

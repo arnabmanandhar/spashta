@@ -240,7 +240,7 @@ $("export").onclick = () => {
     const {done, ...rest} = l; return JSON.stringify({...rest, annotator: who, batch: DATA.batch, tool: DATA.version});
   });
   const blob = new Blob([rows.join("\n") + "\n"], {type: "application/x-ndjson"});
-  const a = el("a", {href: URL.createObjectURL(blob), download: `labels-${MODE}-${DATA.batch}-${who}.jsonl`});
+  const a = el("a", {href: URL.createObjectURL(blob), download: `labels-${DATA.batch}-${who}.jsonl`});
   document.body.append(a); a.click(); a.remove();
 };
 $("importBtn").onclick = () => $("import").click();

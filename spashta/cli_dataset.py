@@ -9,12 +9,14 @@ Dataset commands: from a live store to a frozen, labelled, measured corpus.
   spashta dataset labeltool SNAP sample.jsonl -o page.html [--batch pilot|main] [--double]
   spashta dataset labeltool SNAP --pairs P -o page.html   labelling page for same-event pairs
   spashta dataset check SNAP labels.jsonl            validate labels against the snapshot
-  spashta dataset agreement SNAP a.jsonl b.jsonl     Cohen's kappa per signal, with 95% intervals
+  spashta dataset agreement SNAP --a A.jsonl... --b B.jsonl...   Cohen's kappa per signal, with 95% intervals
   spashta dataset gold primary.jsonl [--adjudicated c.jsonl] -o gold.jsonl
   spashta qrels pool QUERIES -o pool.jsonl [--depth 10]   pool top results of every retrieval mode for judging
   spashta qrels build QUERIES judgments.jsonl -o questions.json --pool pool.jsonl
   spashta dataset errors SNAP gold.jsonl [--retrieval eval.json] -o candidates.md   failure cases to write up
   spashta dataset llm-compare SNAP gold.jsonl --providers gemini groq:openai/gpt-oss-120b   LLM review vs labels
+  spashta dataset card RELEASE [--agreement A] -o README.md   fill the dataset card from a release
+  spashta results --manifest M --compare C ... -o RESULTS.md     results tables and the resume line
   spashta dataset release SNAP OUT [--labels ...]    the public part: no article text, hashes and offsets only
   spashta dataset rehydrate RELEASE OUT              re-fetch the text of a release and re-anchor its labels
 """
@@ -114,7 +116,8 @@ def cmd_labeltool(args) -> int:
     else:
         print("give a sample file, --pairs or --pool", file=sys.stderr)
         return 2
-    batch = args.name or "-".join(x for x in (mode, args.batch, "double" if args.double else "") if x)
+    batch = args.name or {"pair": "pairs", "qrel": "qrels"}.get(mode) or \
+        "article-" + (args.batch or ("double" if args.double else "all"))
     labeltool.build(mode, items, args.out, batch)
     print(f"{len(items)} {mode} items -> {args.out} (contains article text: share only with annotators)")
     return 0
@@ -140,7 +143,8 @@ def cmd_agreement(args) -> int:
     from .dataset import agreement
     from .dataset import labels as LB
     bodies = {k: r["body"] for k, r in _records_by_id(args.snapshot).items()}
-    a, b = LB.read(args.first), LB.read(args.second)
+    a = [r for path in args.a for r in LB.read(path)]
+    b = [r for path in args.b for r in LB.read(path)]
     report = {"articles": agreement.article_agreement(a, b, bodies), "pairs": agreement.pair_agreement(a, b),
               "qrels": agreement.qrel_agreement(a, b)}
     if args.out:
@@ -207,6 +211,24 @@ def cmd_llm_compare(args) -> int:
     return 0
 
 
+def cmd_card(args) -> int:
+    from .dataset import results
+    text = results.fill_card(args.release, args.agreement, args.template)
+    Path(args.out).write_text(text, encoding="utf-8")
+    todo = text.count("TODO")
+    print(f"-> {args.out} ({todo} TODO markers left to fill by hand)")
+    return 0
+
+
+def cmd_results(args) -> int:
+    from .dataset import results
+    text = results.build(args.manifest, args.compare, args.ablation, args.signals, args.agreement, args.llm, args.bench)
+    if args.out:
+        Path(args.out).write_text(text, encoding="utf-8")
+    print(text)
+    return 0
+
+
 def cmd_release(args) -> int:
     from .dataset import release
     m = release.build_release(args.snapshot, args.out, args.labels, args.pairs, args.queries, args.sample, args.card)
@@ -244,6 +266,15 @@ def cmd_qrels_build(args) -> int:
 
 
 def add_dataset_commands(sub) -> None:
+    res = sub.add_parser("results", help="markdown results tables from evaluation outputs")
+    for flag, what in (("manifest", "snapshot manifest.json"), ("compare", "eval --compare --out"),
+                       ("ablation", "eval --ablate-xling --out"), ("signals", "eval --gold --out"),
+                       ("agreement", "dataset agreement --out"), ("llm", "dataset llm-compare --out"),
+                       ("bench", "bench_retrieval.py --json output")):
+        res.add_argument(f"--{flag}", help=what)
+    res.add_argument("-o", "--out")
+    res.set_defaults(func=cmd_results)
+
     q = sub.add_parser("qrels", help="pooled relevance judgments for retrieval queries")
     qs = q.add_subparsers(dest="action", required=True)
     qp = qs.add_parser("pool", help="union of every retrieval mode's top results, shuffled, for judging")
@@ -316,8 +347,8 @@ def add_dataset_commands(sub) -> None:
 
     ag = ds.add_parser("agreement", help="inter-annotator agreement per signal")
     ag.add_argument("snapshot")
-    ag.add_argument("first")
-    ag.add_argument("second")
+    ag.add_argument("--a", nargs="+", required=True, help="the first annotator's label files")
+    ag.add_argument("--b", nargs="+", required=True, help="the second annotator's label files")
     ag.add_argument("--out", help="also write the full report as JSON")
     ag.add_argument("--markdown", action="store_true", help="print a table for the dataset card")
     ag.set_defaults(func=cmd_agreement)
@@ -345,6 +376,13 @@ def add_dataset_commands(sub) -> None:
     lc.add_argument("--pause", type=float, default=4.0, help="seconds between calls (free tiers limit requests per minute)")
     lc.add_argument("--out")
     lc.set_defaults(func=cmd_llm_compare)
+
+    cd = ds.add_parser("card", help="fill the dataset card template from a release")
+    cd.add_argument("release")
+    cd.add_argument("--agreement", help="agreement report JSON (from `dataset agreement --out`)")
+    cd.add_argument("--template", help="a card template (default: the bundled one)")
+    cd.add_argument("-o", "--out", required=True)
+    cd.set_defaults(func=cmd_card)
 
     r = ds.add_parser("release", help="write the redistributable dataset (no article text)")
     r.add_argument("snapshot")

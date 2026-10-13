@@ -99,7 +99,8 @@ def build_release(snapshot_dir: str | Path, out_dir: str | Path, labels: Optiona
              **({"judgments": q["judgments"]} if "judgments" in q else {})} for q in qs))
     m = snapshot.read_manifest(snapshot_dir)
     manifest = {"snapshot_id": m["snapshot_id"], "window": m["window"], "by_lang": m["by_lang"], "by_outlet": m["by_outlet"],
-                "by_outlet_group": m["by_outlet_group"], "software": m["software"], "files": counts,
+                "by_outlet_group": m["by_outlet_group"], "software": m["software"], "min_chars": m.get("min_chars"),
+                "files": counts,
                 "text_included": False,
                 "rehydrate": "pip install spashta && spashta dataset rehydrate <this folder> <output folder>"}
     (out / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
