@@ -47,8 +47,19 @@ The defaults are safe for a public URL:
   so the per-client limit uses the real visitor address. Without it, all
   visitors share the proxy's address and one limit.
 - **Admin endpoints** stay disabled until `SPASHTA_ADMIN_TOKEN` is set.
-- **Fetching** refuses private and local addresses on every redirect hop,
-  caps page size, and honours robots.txt.
+- **Fetching** refuses anything that isn't a public address on a web port
+  (private, loopback, link-local, cloud metadata such as 169.254.169.254,
+  IPv4-mapped and 6to4 forms) on every redirect hop, connects to the
+  exact address it checked so DNS rebinding can't redirect it, gives one
+  fetch 20 seconds in total, caps page size at 5 MB and the analysed text
+  at 60,000 characters, and honours robots.txt.
+- **Request limits.** Bodies over 256 KB get 413 (and POSTs must send a
+  length); an analysis gets `SPASHTA_REQUEST_TIMEOUT` seconds (30) before
+  504; at most `SPASHTA_MAX_CONCURRENT` (4) run at once, more get 503.
+- **No reader addresses in logs.** Each request is logged with a hash of
+  the client address under a key that changes every UTC day and is never
+  stored, so addresses can't be recovered. The Dockerfile turns off
+  uvicorn's own access log, which would record them.
 
 ## Recommended free host: Hugging Face Spaces (Docker)
 

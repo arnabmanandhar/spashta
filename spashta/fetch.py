@@ -7,8 +7,13 @@ Every request Spashta makes goes through Fetcher, which:
   - honours robots.txt for the host
   - waits between requests to the same host
   - refuses non-http(s) URLs, credentials in URLs and, unless allowed,
-    private or local addresses (a hosted instance takes URLs from users),
-    checking every redirect hop before requesting it
+    any address that isn't public (private, loopback, link-local, cloud
+    metadata, reserved) or a non-web port, checking every redirect hop
+    before requesting it
+  - connects to the exact address it checked (DNS pinning), so a hostname
+    that resolves to a public address for the check and to 127.0.0.1 for
+    the request (DNS rebinding) can't reach internal services
+  - can cap the total time one get() may take, redirects and retries included
   - retries 429/503 and network errors, honouring Retry-After
   - can send conditional requests (ETag / Last-Modified) for feeds
   - caps the response size and decodes with the declared charset
@@ -19,9 +24,11 @@ without touching the network.
 
 from __future__ import annotations
 
+import http.client
 import ipaddress
 import re
 import socket
+import ssl
 import threading
 import time
 import urllib.error
@@ -30,15 +37,18 @@ import urllib.robotparser
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Optional, Protocol
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, urlunparse
 
 USER_AGENT = "SpashtaBot/0.1 (+https://github.com/arnabmanandhar/spashta)"
 MAX_BYTES = 5 * 1024 * 1024
 TIMEOUT_S = 20.0
 
 
+WEB_PORTS = frozenset({80, 443, 8080, 8443})
+
+
 class FetchError(RuntimeError):
-    """kind is one of blocked, robots, http, network, too_large."""
+    """kind is one of blocked, robots, http, network, too_large, timeout."""
 
     def __init__(self, kind: str, url: str, message: str = "", status: Optional[int] = None):
         self.kind, self.url, self.status = kind, url, status
@@ -105,27 +115,92 @@ class HTTPCache(Protocol):
     def put_cached(self, url: str, etag: Optional[str], last_modified: Optional[str], body: bytes, content_type: str) -> None: ...
 
 
-def check_url(url: str, allow_private: bool = False) -> None:
+def _public(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    if isinstance(ip, ipaddress.IPv6Address):
+        if ip.ipv4_mapped:  # ::ffff:127.0.0.1
+            return _public(ip.ipv4_mapped)
+        if ip.sixtofour:  # 2002:7f00:1::/48 wraps 127.0.0.1
+            return _public(ip.sixtofour)
+    return ip.is_global and not ip.is_multicast
+
+
+def check_url(url: str, allow_private: bool = False) -> Optional[list[str]]:
+    """Refuse URLs a public server must never fetch. Returns the vetted IP
+    addresses to connect to (None when private addresses are allowed and
+    no resolution is needed)."""
     p = urlparse(url)
     if p.scheme not in ("http", "https") or not p.hostname:
         raise FetchError("blocked", url, "only http(s) URLs")
     if p.username or p.password:
         raise FetchError("blocked", url, "credentials in URL")
     if allow_private:
-        return
+        return None
     try:
-        infos = socket.getaddrinfo(p.hostname, p.port or 443, proto=socket.IPPROTO_TCP)
-    except socket.gaierror:
+        port = p.port or (443 if p.scheme == "https" else 80)
+    except ValueError:
+        raise FetchError("blocked", url, "bad port") from None
+    if port not in WEB_PORTS:
+        raise FetchError("blocked", url, f"port {port} is not a web port")
+    try:
+        infos = socket.getaddrinfo(p.hostname, port, proto=socket.IPPROTO_TCP)
+    except (socket.gaierror, UnicodeError):
         raise FetchError("network", url, "host does not resolve") from None
+    ips = []
     for info in infos:
-        ip = ipaddress.ip_address(info[4][0])
-        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+        ip = ipaddress.ip_address(info[4][0].split("%")[0])
+        if not _public(ip):
             raise FetchError("blocked", url, "private or local address")
+        ips.append(str(ip))
+    return list(dict.fromkeys(ips))
+
+
+class _PinnedHTTPConnection(http.client.HTTPConnection):
+    def __init__(self, host: str, ip: str, port: int, timeout: float):
+        super().__init__(host, port, timeout=timeout)
+        self._ip = ip
+
+    def connect(self) -> None:
+        self.sock = socket.create_connection((self._ip, self.port), self.timeout)
+
+
+class _PinnedHTTPSConnection(http.client.HTTPSConnection):
+    """TLS to a vetted IP, with the certificate checked against the hostname."""
+
+    def __init__(self, host: str, ip: str, port: int, timeout: float):
+        super().__init__(host, port, timeout=timeout, context=ssl.create_default_context())
+        self._ip = ip
+
+    def connect(self) -> None:
+        sock = socket.create_connection((self._ip, self.port), self.timeout)
+        self.sock = self._context.wrap_socket(sock, server_hostname=self.host)
+
+
+def pinned_transport(url: str, headers: dict[str, str], ips: list[str], timeout: float = TIMEOUT_S) -> Response:
+    """GET url from the first reachable vetted address, never re-resolving
+    the hostname. Proxies are not used: a proxy would resolve the name
+    itself."""
+    p = urlparse(url)
+    cls = _PinnedHTTPSConnection if p.scheme == "https" else _PinnedHTTPConnection
+    port = p.port or (443 if p.scheme == "https" else 80)
+    target = urlunparse(("", "", p.path or "/", p.params, p.query, ""))
+    last: Optional[Exception] = None
+    for ip in ips:
+        conn = cls(p.hostname, ip, port, timeout)
+        try:
+            conn.request("GET", target, headers=headers)
+            r = conn.getresponse()
+            body = r.read(MAX_BYTES + 1)
+            return Response(url, r.status, {k.lower(): v for k, v in r.getheaders()}, body)
+        except (OSError, http.client.HTTPException) as e:
+            last = e
+        finally:
+            conn.close()
+    raise FetchError("network", url, str(last) if last else "no address")
 
 
 @dataclass
 class Fetcher:
-    transport: Transport = urllib_transport
+    transport: Optional[Transport] = None  # default: pinned connections, or urllib when private addresses are allowed
     delay_s: float = 1.0  # between requests to one host
     respect_robots: bool = True
     allow_private: bool = False
@@ -133,9 +208,27 @@ class Fetcher:
     cache: Optional[HTTPCache] = None  # conditional GET for feeds and sitemaps
     max_redirects: int = 5
     retries: int = 2  # on 429, 503 and network errors, honouring Retry-After
+    deadline_s: Optional[float] = None  # total time for one get(), redirects and retries included
     _robots: dict[str, Optional[urllib.robotparser.RobotFileParser]] = field(default_factory=dict, repr=False)
     _last: dict[str, float] = field(default_factory=dict, repr=False)
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
+    _local: threading.local = field(default_factory=threading.local, repr=False)
+
+    def _remaining(self, url: str) -> float:
+        deadline = getattr(self._local, "deadline", None)
+        if deadline is None:
+            return TIMEOUT_S
+        left = deadline - time.monotonic()
+        if left <= 0:
+            raise FetchError("timeout", url, "took too long")
+        return min(TIMEOUT_S, left)
+
+    def _send(self, url: str, headers: dict[str, str], ips: Optional[list[str]]) -> Response:
+        if self.transport is not None:
+            return self.transport(url, headers)
+        if ips is None:
+            return urllib_transport(url, headers)
+        return pinned_transport(url, headers, ips, self._remaining(url))
 
     def _wait(self, host: str) -> None:
         with self._lock:
@@ -144,19 +237,21 @@ class Fetcher:
         if wait > 0:
             time.sleep(wait)
 
-    def _once(self, url: str, headers: dict[str, str]) -> Response:
+    def _once(self, url: str, headers: dict[str, str], ips: Optional[list[str]] = None) -> Response:
         for attempt in range(self.retries + 1):
             self._wait(urlparse(url).netloc)
+            self._remaining(url)
             try:
-                r = self.transport(url, headers)
-            except FetchError:
-                if attempt == self.retries:
+                r = self._send(url, headers, ips)
+            except FetchError as e:
+                if attempt == self.retries or e.kind == "timeout":
                     raise
-                time.sleep(min(2 ** attempt, 8))
+                time.sleep(min(2 ** attempt, 8, self._remaining(url)))
                 continue
             if r.status in (429, 503) and attempt < self.retries:
                 retry_after = r.headers.get("retry-after", "")
-                time.sleep(min(float(retry_after), 30.0) if retry_after.isdigit() else min(2 ** attempt, 8))
+                wait = min(float(retry_after), 30.0) if retry_after.isdigit() else min(2 ** attempt, 8)
+                time.sleep(min(wait, self._remaining(url)))
                 continue
             return r
         return r
@@ -164,14 +259,14 @@ class Fetcher:
     def _raw(self, url: str, conditional: bool = False) -> Response:
         cached = self.cache.get_cached(url) if conditional and self.cache else None
         for _ in range(self.max_redirects + 1):
-            check_url(url, self.allow_private)
+            ips = check_url(url, self.allow_private)
             headers = {"User-Agent": self.user_agent, "Accept-Language": "ne,en;q=0.8"}
             if cached:
                 if cached[0]:
                     headers["If-None-Match"] = cached[0]
                 if cached[1]:
                     headers["If-Modified-Since"] = cached[1]
-            r = self._once(url, headers)
+            r = self._once(url, headers, ips)
             if len(r.body) > MAX_BYTES:
                 raise FetchError("too_large", url)
             if r.status in (301, 302, 303, 307, 308) and r.headers.get("location"):
@@ -209,11 +304,18 @@ class Fetcher:
         """conditional=True sends the cached ETag / Last-Modified and serves
         the cached body on 304; used for feeds and sitemaps, which are polled
         repeatedly and rarely change."""
-        if self.respect_robots:
-            rp = self.robots(url)
-            if rp is not None and not rp.can_fetch(self.user_agent, url):
-                raise FetchError("robots", url, "disallowed by robots.txt")
-        r = self._raw(url, conditional)
+        outer = getattr(self._local, "deadline", None) is None and self.deadline_s is not None
+        if outer:
+            self._local.deadline = time.monotonic() + self.deadline_s
+        try:
+            if self.respect_robots:
+                rp = self.robots(url)
+                if rp is not None and not rp.can_fetch(self.user_agent, url):
+                    raise FetchError("robots", url, "disallowed by robots.txt")
+            r = self._raw(url, conditional)
+        finally:
+            if outer:
+                self._local.deadline = None
         if r.status >= 400:
             raise FetchError("http", url, status=r.status)
         return r

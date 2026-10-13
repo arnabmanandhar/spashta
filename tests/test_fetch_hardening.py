@@ -92,3 +92,76 @@ def test_bikram_sambat_dates():
     assert find_bs_date("published 2026-10-10") is None  # Gregorian, not BS
     pytest.importorskip("nepali_datetime")
     assert parse_bs_date("२०८३ असोज २४").date().isoformat() == "2026-10-10"
+
+
+@pytest.mark.parametrize("url", ["http://[::ffff:127.0.0.1]/", "http://169.254.169.254/latest/meta-data/", "http://100.64.0.1/",
+                                 "http://0.0.0.0/", "http://[::1]/", "http://10.1.2.3/", "http://[2002:7f00:1::]/"])
+def test_non_public_addresses_are_blocked(url):
+    from spashta.fetch import check_url
+    with pytest.raises(FetchError) as e:
+        check_url(url)
+    assert e.value.kind == "blocked"
+
+
+def test_non_web_ports_are_blocked():
+    from spashta.fetch import check_url
+    with pytest.raises(FetchError, match="port 22"):
+        check_url("http://93.184.216.34:22/")
+    assert check_url("https://93.184.216.34:8443/") == ["93.184.216.34"]
+
+
+def test_connection_is_pinned_to_the_checked_address(monkeypatch):
+    """DNS rebinding: the name resolves to a public address for the check and
+    to 127.0.0.1 afterwards. The request must go to the checked address."""
+    import socket
+
+    import spashta.fetch as F
+    answers = iter(["93.184.216.34", "127.0.0.1", "127.0.0.1"])
+    lookups = []
+
+    def fake_getaddrinfo(host, port, *a, **k):
+        lookups.append(host)
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (next(answers), port))]
+
+    sent = []
+    monkeypatch.setattr(F.socket, "getaddrinfo", fake_getaddrinfo)
+    monkeypatch.setattr(F, "pinned_transport", lambda url, headers, ips, timeout=0: sent.append(ips) or
+                        Response(url, 200, {"content-type": "text/html"}, b"ok"))
+    r = Fetcher(delay_s=0, respect_robots=False).get("http://rebind.example/a")
+    assert r.text == "ok" and sent == [["93.184.216.34"]] and lookups == ["rebind.example"]
+
+
+def test_pinned_transport_sends_the_hostname(tmp_path):
+    import http.server
+    import threading
+
+    from spashta.fetch import pinned_transport
+    seen = {}
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            seen["host"], seen["path"] = self.headers["Host"], self.path
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
+            self.end_headers()
+            self.wfile.write(b"hello")
+
+        def log_message(self, *a):
+            pass
+
+    srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.handle_request, daemon=True).start()
+    port = srv.server_address[1]
+    r = pinned_transport(f"http://news.example:{port}/a/b?x=1", {"User-Agent": "SpashtaBot"}, ["127.0.0.1"], 5)
+    srv.server_close()
+    assert r.status == 200 and r.body == b"hello"
+    assert seen == {"host": f"news.example:{port}", "path": "/a/b?x=1"}
+
+
+def test_deadline_caps_total_time():
+    import time
+    web = Scripted({"https://a.example/slow": [Response("https://a.example/slow", 503, {"retry-after": "5"}, b"")]})
+    t = time.monotonic()
+    with pytest.raises(FetchError) as e:
+        Fetcher(transport=web, delay_s=0, allow_private=True, deadline_s=0.3, retries=3).get("https://a.example/slow")
+    assert e.value.kind == "timeout" and time.monotonic() - t < 2

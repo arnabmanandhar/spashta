@@ -17,4 +17,6 @@ ENV SPASHTA_DB=/tmp/spashta.db \
 EXPOSE 7860
 
 # Seed the outlet list (idempotent), then serve.
-CMD spashta --db "$SPASHTA_DB" sources seed && uvicorn spashta.api:app --host 0.0.0.0 --port "$PORT" --proxy-headers
+# --no-access-log: uvicorn's access log records client addresses; Spashta logs requests without them.
+CMD spashta --db "$SPASHTA_DB" sources seed && \
+    uvicorn spashta.api:app --host 0.0.0.0 --port "$PORT" --proxy-headers --no-access-log --timeout-keep-alive 5

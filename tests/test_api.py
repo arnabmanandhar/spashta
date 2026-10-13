@@ -68,3 +68,46 @@ def test_rate_limit_behind_proxy(sample_index, monkeypatch):
     a, b = {"X-Forwarded-For": "1.1.1.1"}, {"X-Forwarded-For": "2.2.2.2"}
     assert [c.get("/api/search", params={"q": "x"}, headers=a).status_code for _ in range(3)] == [200, 200, 429]
     assert c.get("/api/search", params={"q": "x"}, headers=b).status_code == 200
+
+
+def test_body_limits_and_security_headers(client):
+    r = client.post("/api/analyze", content=b'{"title": "x", "body": "' + b"a" * 300_000 + b'"}',
+                    headers={"Content-Type": "application/json"})
+    assert r.status_code == 413
+    r = client.get("/")
+    assert r.headers["x-content-type-options"] == "nosniff" and "default-src 'self'" in r.headers["content-security-policy"]
+
+    def chunks():
+        yield b'{"title": "x", "body": "y"}'
+    r = client.post("/api/analyze", content=chunks(), headers={"Content-Type": "application/json"})
+    assert r.status_code == 411
+
+
+def test_logs_never_contain_the_client_address(sample_index, caplog, monkeypatch):
+    import logging
+    monkeypatch.setenv("SPASHTA_TRUST_PROXY", "1")
+    c = TestClient(create_app(index=sample_index, rate_per_min=50))
+    with caplog.at_level(logging.INFO, logger="spashta.api"):
+        c.get("/api/search", params={"q": "पहिरो"}, headers={"X-Forwarded-For": "203.0.113.77"})
+        c.get("/api/search", params={"q": "landslide"}, headers={"X-Forwarded-For": "203.0.113.77"})
+    lines = [r.getMessage() for r in caplog.records if r.name == "spashta.api"]
+    assert len(lines) == 2 and not any("203.0.113" in x for x in lines)
+    assert lines[0].split("client=")[1] == lines[1].split("client=")[1]  # same client, same daily tag
+    assert "q=" not in lines[0]  # no query text either
+
+
+def test_slow_analysis_times_out_and_frees_its_slot(sample_index, monkeypatch):
+    import time
+
+    import spashta.api as api
+    monkeypatch.setenv("SPASHTA_REQUEST_TIMEOUT", "0.2")
+    monkeypatch.setenv("SPASHTA_MAX_CONCURRENT", "1")
+    real = api.analyze
+    monkeypatch.setattr(api, "analyze", lambda *a, **k: (time.sleep(0.5), real(*a, **k))[1])
+    c = TestClient(create_app(index=sample_index, rate_per_min=50))
+    r = c.post("/api/analyze", json={"title": "शीर्षक", "body": "पहिरोले घर बगायो।"})
+    assert r.status_code == 504
+    assert c.post("/api/analyze", json={"title": "t", "body": "b"}).status_code == 503  # the slow one still holds the slot
+    time.sleep(0.5)
+    monkeypatch.setattr(api, "analyze", real)
+    assert c.post("/api/analyze", json={"title": "t", "body": "b c d"}).status_code == 200

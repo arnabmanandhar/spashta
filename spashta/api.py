@@ -23,25 +23,42 @@ Configuration (environment)
   SPASHTA_LLM_DAILY_LIMIT        LLM reviews per UTC day across all callers (default 50; cached reviews are free)
   SPASHTA_TRUST_PROXY            "1" when behind a host's proxy (Hugging Face, Render, Fly): rate limit by
                                  the client address in X-Forwarded-For instead of the proxy's
+  SPASHTA_REQUEST_TIMEOUT        seconds an analysis may take before the request gets 504 (default 30)
+  SPASHTA_MAX_CONCURRENT         analyses running at once; more get 503 (default 4)
+  SPASHTA_MAX_BODY_BYTES         largest request body accepted (default 262144)
 
 Model keys (GEMINI_API_KEY, GROQ_API_KEY, ...) are read from the environment
 by anchor.llm and never appear in responses, errors or logs.
 
 Fetching user-supplied URLs always refuses private and local addresses,
-and every redirect hop is checked (see fetch.py).
+every redirect hop is checked, connections are pinned to the checked
+address, and one fetch has a total time limit (see fetch.py).
+
+Privacy: reader IP addresses are never written to logs or disk. The log
+line for a request carries a keyed hash of the address that changes
+every UTC day (the key lives only in memory), so a day's requests from
+one client can be told apart without the address being recoverable. Run
+uvicorn with --no-access-log (the Dockerfile does) so it doesn't log
+addresses itself. Rate-limit state is in memory, keyed the same way, and
+idle entries are dropped.
 """
 
 from __future__ import annotations
 
+import asyncio
+import hashlib
 import hmac
+import logging
 import os
+import secrets
 import threading
 import time
 from collections import defaultdict, deque
 from typing import Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from . import __version__
@@ -55,6 +72,31 @@ from .retrieve import Index
 from .store import Store
 
 MAX_TEXT = 50_000
+MAX_ARTICLE_CHARS = 60_000  # a fetched page's text is cut here before analysis
+SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    "Content-Security-Policy": ("default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+                                "img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'"),
+}
+log = logging.getLogger("spashta.api")
+
+
+class DailyKey:
+    """Keyed hash of a client address with a key that is regenerated every
+    UTC day and never stored: same client, same tag, for one day only."""
+
+    def __init__(self):
+        self.day, self.key = "", b""
+        self.lock = threading.Lock()
+
+    def __call__(self, address: str) -> str:
+        today = time.strftime("%Y-%m-%d", time.gmtime())
+        with self.lock:
+            if today != self.day:
+                self.day, self.key = today, secrets.token_bytes(32)
+            key = self.key
+        return hmac.new(key, address.encode(), hashlib.sha256).hexdigest()[:12]
 
 
 class AnalyzeRequest(BaseModel):
@@ -83,6 +125,9 @@ class RateLimiter:
     def check(self, key: str) -> None:
         now = time.monotonic()
         with self.lock:
+            if len(self.hits) > 10_000:  # drop idle clients so the table can't grow without bound
+                for k in [k for k, q in self.hits.items() if not q or now - q[-1] > 60]:
+                    del self.hits[k]
             q = self.hits[key]
             while q and now - q[0] > 60:
                 q.popleft()
@@ -118,7 +163,11 @@ def create_app(index: Optional[Index] = None, fetcher: Optional[Fetcher] = None,
                public_llm: Optional[bool] = None, llm_daily_limit: Optional[int] = None) -> FastAPI:
     app = FastAPI(title="Spashta", version=__version__, description="News integrity reports for Nepali and English.")
     state = {"index": index, "lock": threading.Lock()}
-    fetcher = fetcher or Fetcher(allow_private=False)
+    fetcher = fetcher or Fetcher(allow_private=False, deadline_s=20.0)
+    request_timeout = float(os.environ.get("SPASHTA_REQUEST_TIMEOUT", "30"))
+    max_body = int(os.environ.get("SPASHTA_MAX_BODY_BYTES", str(256 * 1024)))
+    slots = threading.BoundedSemaphore(int(os.environ.get("SPASHTA_MAX_CONCURRENT", "4")))
+    tag = DailyKey()
     token = admin_token if admin_token is not None else os.environ.get("SPASHTA_ADMIN_TOKEN", "")
     limiter = RateLimiter(rate_per_min or int(os.environ.get("SPASHTA_RATE_PER_MIN", "20")))
     global_limiter = RateLimiter(int(os.environ.get("SPASHTA_GLOBAL_RATE_PER_MIN", "120")))
@@ -134,12 +183,53 @@ def create_app(index: Optional[Index] = None, fetcher: Optional[Fetcher] = None,
                                        get_embedder(os.environ.get("SPASHTA_EMBEDDER", "hashing")))
             return state["index"]
 
-    def client_key(request: Request) -> str:
+    def client_address(request: Request) -> str:
         if trust_proxy:
             forwarded = request.headers.get("x-forwarded-for", "")
             if forwarded:
                 return forwarded.split(",")[0].strip()
         return request.client.host if request.client else "unknown"
+
+    def client_key(request: Request) -> str:
+        return tag(client_address(request))
+
+    @app.middleware("http")
+    async def guard(request: Request, call_next):
+        """Body size cap, security headers, and one log line per request
+        with no address in it."""
+        start = time.monotonic()
+        length = request.headers.get("content-length")
+        if request.method in ("POST", "PUT", "PATCH") and length is None:
+            return JSONResponse({"detail": "Content-Length required."}, status_code=411)
+        if length is not None and (not length.isdigit() or int(length) > max_body):
+            return JSONResponse({"detail": "Request body too large."}, status_code=413)
+        try:
+            response = await call_next(request)
+        except Exception as e:  # noqa: BLE001 - log the kind, never the request content
+            log.error("%s %s 500 %s client=%s", request.method, request.url.path, type(e).__name__, client_key(request))
+            response = JSONResponse({"detail": "Internal error."}, status_code=500)
+        for k, v in SECURITY_HEADERS.items():
+            response.headers.setdefault(k, v)
+        log.info("%s %s %d %dms client=%s", request.method, request.url.path, response.status_code,
+                 (time.monotonic() - start) * 1000, client_key(request))
+        return response
+
+    async def bounded(fn, *args):
+        """Run fn in a worker thread with a time limit and a cap on how many
+        run at once. A timed-out analysis finishes in the background but
+        keeps its slot until it does, so runaway work can't pile up."""
+        if not slots.acquire(blocking=False):
+            raise HTTPException(503, "Busy; try again in a moment.")
+
+        def run():
+            try:
+                return fn(*args)
+            finally:
+                slots.release()
+        try:
+            return await asyncio.wait_for(run_in_threadpool(run), request_timeout)
+        except asyncio.TimeoutError:
+            raise HTTPException(504, "The analysis took too long.") from None
 
     def rate(request: Request) -> None:
         global_limiter.check("*")
@@ -159,25 +249,29 @@ def create_app(index: Optional[Index] = None, fetcher: Optional[Fetcher] = None,
         return {"version": __version__, "embedder": index.embedder.name, **index.store.count()}
 
     @app.post("/api/analyze", dependencies=[Depends(rate)])
-    def analyze_endpoint(req: AnalyzeRequest, index: Index = Depends(get_index),
-                         authorization: str = Header(default="")) -> dict:
+    async def analyze_endpoint(req: AnalyzeRequest, index: Index = Depends(get_index),
+                               authorization: str = Header(default="")) -> dict:
         if req.llm:
             if not (public_llm or is_admin(authorization)):
                 raise HTTPException(403, "The LLM review is not enabled for public requests on this server.")
             if not llm_budget.take():
                 raise HTTPException(429, "Today's LLM review budget is used up; try again tomorrow.")
+        if not req.url and not req.body:
+            raise HTTPException(422, "Send a url, or a title and body.")
+        return await bounded(_analyze, req, index)
+
+    def _analyze(req: AnalyzeRequest, index: Index) -> dict:
         if req.url:
             try:
                 article = fetch_article(req.url, fetcher)
             except FetchError as e:
-                status = 400 if e.kind in ("blocked", "robots") else 502
+                status = 400 if e.kind in ("blocked", "robots") else 504 if e.kind == "timeout" else 502
                 raise HTTPException(status, f"Could not fetch the page ({e.kind}).") from None
-        elif req.body:
+            article = article.model_copy(update={"title": article.title[:500], "body": article.body[:MAX_ARTICLE_CHARS]})
+        else:
             title = (req.title or "").strip() or req.body.strip().split("\n", 1)[0][:200]
             text = f"{title}\n{req.body}"
             article = Article(url="text:", title=L.clean(title), body=L.clean(req.body), lang=L.detect_language(text))
-        else:
-            raise HTTPException(422, "Send a url, or a title and body.")
         return analyze(article, index, use_llm=req.llm).to_dict()
 
     @app.get("/api/search", dependencies=[Depends(rate)])
@@ -256,4 +350,16 @@ document.getElementById("go").onclick=async()=>{
 </script></body></html>
 """
 
+def _configure_logging() -> None:
+    """One line per request on stderr (the container log), unless the host
+    already configured logging."""
+    level = os.environ.get("SPASHTA_LOG_LEVEL", "INFO").upper()
+    if not log.handlers and level != "OFF":
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+        log.addHandler(handler)
+        log.setLevel(level)
+
+
+_configure_logging()
 app = create_app()
