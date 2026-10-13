@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spashta labelling</title>
+<style>
+:root{--bg:#fbfaf7;--fg:#1d1d1b;--muted:#6b6a65;--line:#e4e1d8;--card:#fff;--accent:#2b5c8a;
+--named:#cfe8d6;--anonymous:#fde7b8;--unattributed:#f6c9c2;--loaded:#d9d2f3;--done:#2f7d4f}
+@media (prefers-color-scheme:dark){:root{--bg:#161614;--fg:#ecebe6;--muted:#a3a19a;--line:#33322e;--card:#1f1f1c;--accent:#8db7e0;
+--named:#24452f;--anonymous:#4d3f1c;--unattributed:#57302a;--loaded:#3a3157}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 system-ui,"Noto Sans Devanagari",sans-serif}
+header{position:sticky;top:0;z-index:2;background:var(--bg);border-bottom:1px solid var(--line);padding:8px 16px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+header b{margin-right:auto}main{max-width:1100px;margin:0 auto;padding:16px}
+button,select,input,textarea{font:inherit;color:var(--fg);background:var(--card);border:1px solid var(--line);border-radius:6px;padding:4px 10px}
+button{cursor:pointer}button.on{background:var(--accent);color:var(--bg);border-color:var(--accent)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
+.meta{color:var(--muted);font-size:14px;overflow-wrap:anywhere}h2{margin:4px 0 12px;font-size:22px;line-height:1.35}
+.body{white-space:pre-wrap;overflow-wrap:anywhere}.body mark{color:inherit;border-radius:2px;padding:0}
+mark.named{background:var(--named)}mark.anonymous{background:var(--anonymous)}mark.unattributed{background:var(--unattributed)}
+mark.loaded{background:none;text-decoration:underline 3px var(--accent);text-underline-offset:3px}
+mark.named.loaded,mark.anonymous.loaded,mark.unattributed.loaded{text-decoration:underline 3px var(--accent)}
+.tools{position:sticky;top:52px;z-index:1;background:var(--bg);padding:8px 0;display:flex;flex-wrap:wrap;gap:6px}
+.q{margin:10px 0}.q>span{display:inline-block;min-width:150px;font-weight:600}
+.spans li{margin:2px 0}.spans button{padding:0 6px;margin-left:6px}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:16px}@media (max-width:800px){.pair{grid-template-columns:1fr}}
+.pair .body{max-height:60vh;overflow:auto}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--line);margin-right:4px}.dot.done{background:var(--done)}
+details{margin-bottom:16px}textarea{width:100%;min-height:60px}kbd{border:1px solid var(--line);border-radius:4px;padding:0 4px;font-size:13px}
+.fig input{width:30%;margin-right:4px}
+@media (max-width:700px){header{position:static}.tools{top:0}}
+</style></head><body>
+<header><b id="title">Spashta labelling</b>
+<label>Annotator <input id="annotator" size="10" placeholder="your initials"></label>
+<button id="prev">◀</button><span id="pos"></span><button id="next">▶</button>
+<button id="nextTodo">Next unlabelled</button>
+<button id="export">Export labels</button>
+<label><button id="importBtn" type="button">Import</button><input id="import" type="file" accept=".jsonl,.json" hidden></label>
+</header>
+<main>
+<details><summary>Guide (short version; the full guide is docs/ANNOTATION.md)</summary><div id="guide"></div></details>
+<div id="view"></div>
+</main>
+<script id="data" type="application/json">/*__DATA__*/</script>
+<script>
+"use strict";
+const DATA = JSON.parse(document.getElementById("data").textContent);
+const MODE = DATA.mode, ITEMS = DATA.items, TOPICS = DATA.topics, STORE = "spashta-labels:" + DATA.batch;
+const $ = id => document.getElementById(id);
+const cp = s => Array.from(s).length;               // code points, as Python counts them
+let labels = {}, pos = 0;
+try { labels = JSON.parse(localStorage.getItem(STORE) || "{}"); } catch (e) { labels = {}; }
+try { $("annotator").value = localStorage.getItem("spashta-annotator") || ""; } catch (e) {}
+$("annotator").onchange = () => { try { localStorage.setItem("spashta-annotator", $("annotator").value.trim()); } catch (e) {} };
+
+const GUIDES = {
+  article: `<p><b>Headline</b>: consistent = the story supports everything the headline says; partly = the headline overstates,
+    drops a hedge or adds a detail the story only half supports; inconsistent = the headline claims something the story doesn't support.</p>
+    <p><b>Sensationalism</b>: 0 = measured, informational; 1 = some emotive or clickbait wording, but the facts lead;
+    2 = the wording is built to provoke (shock words, teasing headline, calls to share).</p>
+    <p><b>Claims</b>: select each key factual claim (who did what, figures, causes) and press <kbd>1</kbd> named source,
+    <kbd>2</kbd> anonymous source ("sources said", "स्रोतका अनुसार"), <kbd>3</kbd> no attribution.
+    <b>Loaded language</b>: select the words and press <kbd>L</kbd>.</p>
+    <p>Keys: <kbd>Q</kbd>/<kbd>W</kbd>/<kbd>E</kbd> headline, <kbd>Z</kbd>/<kbd>X</kbd>/<kbd>C</kbd> sensationalism 0/1/2,
+    <kbd>Enter</kbd> done and next.</p>`,
+  pair: `<p>Do the two articles report <b>the same event</b> (the same incident, decision or announcement, not just the same topic)?
+    If yes, list any <b>figures that conflict</b> (deaths, amounts, dates): what, the value in A, the value in B.</p>
+    <p>Keys: <kbd>Y</kbd> yes, <kbd>N</kbd> no, <kbd>U</kbd> unsure, <kbd>Enter</kbd> done and next.</p>`,
+  qrel: `<p>Would this article help someone who searched for the query? 2 = directly about it; 1 = partly (mentions it,
+    or a closely related event); 0 = not relevant. Judge the article, not the language it is in.</p>
+    <p>Keys: <kbd>0</kbd>/<kbd>1</kbd>/<kbd>2</kbd> grade and next.</p>`};
+$("guide").innerHTML = GUIDES[MODE];
+$("title").textContent = "Spashta labelling · " + MODE + " · " + DATA.batch;
+
+function idOf(it) { return MODE === "pair" ? it.pair_id : MODE === "qrel" ? it.qid + ":" + it.article_id : it.id; }
+function cur() { const it = ITEMS[pos]; const k = idOf(it); return labels[k] || (labels[k] = blank(it)); }
+function blank(it) {
+  if (MODE === "pair") return {task: "pair", pair_id: it.pair_id, a: it.a.id, b: it.b.id, same_event: null, conflicting_figures: [], notes: "", done: false};
+  if (MODE === "qrel") return {task: "qrel", qid: it.qid, article_id: it.article_id, grade: null, done: false};
+  return {task: "article", article_id: it.id, headline: null, sensationalism: null, claims: [], loaded: [],
+          topic: it.topic || null, opinion: false, skip: null, notes: "", done: false};
+}
+function save() { try { localStorage.setItem(STORE, JSON.stringify(labels)); } catch (e) {} drawPos(); }
+function complete(l) {
+  if (MODE === "pair") return l.same_event !== null;
+  if (MODE === "qrel") return l.grade !== null;
+  return !!l.skip || (l.headline !== null && l.sensationalism !== null);
+}
+function drawPos() {
+  const n = ITEMS.filter(it => (labels[idOf(it)] || {}).done).length;
+  $("pos").innerHTML = `<span class="dot ${(labels[idOf(ITEMS[pos])] || {}).done ? "done" : ""}"></span>${pos + 1} / ${ITEMS.length} · ${n} done`;
+}
+function el(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) { if (k === "on") for (const [ev, f] of Object.entries(v)) e.addEventListener(ev, f); else if (k === "cls") e.className = v; else e.setAttribute(k, v); }
+  for (const kid of kids) e.append(kid);
+  return e;
+}
+function choice(label, options, get, set) {
+  const row = el("div", {cls: "q"}, el("span", {}, label));
+  for (const [val, text] of options) {
+    const b = el("button", {type: "button", on: {click: () => { set(val); save(); render(); }}}, text);
+    if (get() === val) b.classList.add("on");
+    row.append(b, " ");
+  }
+  return row;
+}
+
+// ---- body with highlights; offsets in code points --------------------------------
+function u16map(text) { const m = [0]; let u = 0; for (const ch of text) { u += ch.length; m.push(u); } return m; }
+function renderBody(text, l) {
+  const box = el("div", {cls: "body", id: "body"});
+  const map = u16map(text), spans = [];
+  for (const c of l.claims) spans.push({s: map[c.start], e: map[c.end], cls: c.sourcing});
+  for (const c of l.loaded) spans.push({s: map[c.start], e: map[c.end], cls: "loaded"});
+  const cuts = [...new Set([0, text.length, ...spans.flatMap(x => [x.s, x.e])])].sort((a, b) => a - b);
+  for (let i = 0; i + 1 < cuts.length; i++) {
+    const a = cuts[i], b = cuts[i + 1], seg = text.slice(a, b);
+    const cls = [...new Set(spans.filter(x => x.s <= a && x.e >= b).map(x => x.cls))];
+    box.append(cls.length ? el("mark", {cls: cls.join(" ")}, seg) : document.createTextNode(seg));
+  }
+  return box;
+}
+function selection() {
+  const body = $("body"), sel = window.getSelection();
+  if (!body || !sel.rangeCount || sel.isCollapsed) return null;
+  const r = sel.getRangeAt(0);
+  if (!body.contains(r.startContainer) || !body.contains(r.endContainer)) return null;
+  const pre = document.createRange(); pre.selectNodeContents(body); pre.setEnd(r.startContainer, r.startOffset);
+  const text = ITEMS[pos].body;
+  let s = pre.toString().length, e = s + r.toString().length;
+  while (s < e && /\s/.test(text[s])) s++;
+  while (e > s && /\s/.test(text[e - 1])) e--;
+  if (s >= e) return null;
+  return {start: cp(text.slice(0, s)), end: cp(text.slice(0, e))};
+}
+function addSpan(kind, sourcing) {
+  const s = selection(); if (!s) { alert("Select text in the article first."); return; }
+  const l = cur();
+  if (kind === "claims") l.claims.push({...s, sourcing}); else l.loaded.push(s);
+  l[kind].sort((a, b) => a.start - b.start);
+  window.getSelection().removeAllRanges(); save(); render();
+}
+function spanList(l, text) {
+  const chars = Array.from(text), ul = el("ul", {cls: "spans"});
+  const item = (kind, i, s, name) => ul.append(el("li", {}, `${name}: “${chars.slice(s.start, s.end).join("").slice(0, 140)}”`,
+    el("button", {type: "button", title: "remove", on: {click: () => { l[kind].splice(i, 1); save(); render(); }}}, "×")));
+  l.claims.forEach((s, i) => item("claims", i, s, s.sourcing));
+  l.loaded.forEach((s, i) => item("loaded", i, s, "loaded"));
+  return ul;
+}
+
+// ---- views ----------------------------------------------------------------------
+function renderArticle(it, l) {
+  const v = $("view");
+  v.append(el("div", {cls: "card"},
+    el("div", {cls: "meta"}, `${it.source} · ${it.lang} · `, el("a", {href: it.url, target: "_blank", rel: "noopener noreferrer"}, it.url)),
+    el("h2", {}, it.title),
+    el("div", {cls: "tools"},
+      el("button", {type: "button", on: {click: () => addSpan("claims", "named")}}, "1 · Named source"),
+      el("button", {type: "button", on: {click: () => addSpan("claims", "anonymous")}}, "2 · Anonymous source"),
+      el("button", {type: "button", on: {click: () => addSpan("claims", "unattributed")}}, "3 · No attribution"),
+      el("button", {type: "button", on: {click: () => addSpan("loaded")}}, "L · Loaded language")),
+    renderBody(it.body, l)));
+  const topic = el("select", {on: {change: e => { l.topic = e.target.value; save(); }}});
+  for (const t of TOPICS) { const o = el("option", {value: t}, t); if (l.topic === t) o.selected = true; topic.append(o); }
+  const skip = el("select", {on: {change: e => { l.skip = e.target.value || null; save(); render(); }}});
+  for (const [v_, t] of [["", "label this article"], ["not news", "skip: not a news article"], ["text broken", "skip: text is broken or cut"], ["duplicate", "skip: duplicate"]]) {
+    const o = el("option", {value: v_}, t); if ((l.skip || "") === v_) o.selected = true; skip.append(o);
+  }
+  const opinion = el("input", {type: "checkbox", on: {change: e => { l.opinion = e.target.checked; save(); }}});
+  opinion.checked = !!l.opinion;
+  v.append(el("div", {cls: "card"},
+    choice("Headline", [["consistent", "Q · consistent"], ["partly", "W · partly"], ["inconsistent", "E · inconsistent"]], () => l.headline, x => l.headline = x),
+    choice("Sensationalism", [[0, "Z · 0 measured"], [1, "X · 1 some"], [2, "C · 2 heavy"]], () => l.sensationalism, x => l.sensationalism = x),
+    el("div", {cls: "q"}, el("span", {}, "Topic"), topic, " ", el("label", {}, opinion, " opinion / commentary"), " ", skip),
+    el("div", {cls: "q"}, el("span", {}, "Marked spans")), spanList(l, it.body),
+    notes(l), doneButton(l)));
+}
+function renderPair(it, l) {
+  const side = (x, name) => el("div", {cls: "card"}, el("div", {cls: "meta"}, `${name} · ${x.source} · ${x.lang} · ${x.published || ""}`),
+    el("h2", {}, x.title), el("div", {cls: "body"}, x.body));
+  $("view").append(el("div", {cls: "pair"}, side(it.a, "A"), side(it.b, "B")));
+  const figs = el("div", {});
+  l.conflicting_figures.forEach((f, i) => figs.append(el("div", {cls: "fig"},
+    ...["what", "a", "b"].map(k => { const inp = el("input", {placeholder: k === "what" ? "what (e.g. deaths)" : "value in " + k.toUpperCase(), on: {change: e => { f[k] = e.target.value; save(); }}}); inp.value = f[k] || ""; return inp; }),
+    el("button", {type: "button", on: {click: () => { l.conflicting_figures.splice(i, 1); save(); render(); }}}, "×"))));
+  $("view").append(el("div", {cls: "card"},
+    choice("Same event?", [["yes", "Y · yes"], ["no", "N · no"], ["unsure", "U · unsure"]], () => l.same_event, x => l.same_event = x),
+    el("div", {cls: "q"}, el("span", {}, "Conflicting figures"),
+      el("button", {type: "button", on: {click: () => { l.conflicting_figures.push({what: "", a: "", b: ""}); save(); render(); }}}, "+ add")), figs,
+    notes(l), doneButton(l)));
+}
+function renderQrel(it, l) {
+  $("view").append(el("div", {cls: "card"}, el("div", {cls: "meta"}, `Query (${it.query_lang || "?"})`), el("h2", {}, it.query)),
+    el("div", {cls: "card"}, el("div", {cls: "meta"}, `${it.source} · ${it.lang}`), el("h2", {}, it.title), el("div", {cls: "body"}, it.body)),
+    el("div", {cls: "card"}, choice("Relevance", [[0, "0 · not relevant"], [1, "1 · partly"], [2, "2 · relevant"]], () => l.grade, x => { l.grade = x; l.done = true; })));
+}
+function notes(l) {
+  const t = el("textarea", {placeholder: "notes: what was ambiguous? (helps revise the guide)", on: {change: e => { l.notes = e.target.value; save(); }}});
+  t.value = l.notes || ""; return t;
+}
+function doneButton(l) {
+  return el("div", {cls: "q"}, el("button", {type: "button", on: {click: finish}}, "Done · next (Enter)"),
+    complete(l) ? "" : el("span", {cls: "meta"}, "  answer the questions above first"));
+}
+function finish() {
+  const l = cur(); if (!complete(l)) { alert("Answer the questions first (or choose a skip reason)."); return; }
+  l.done = true; save(); go(1);
+}
+function render() {
+  $("view").innerHTML = ""; const it = ITEMS[pos], l = cur();
+  if (MODE === "pair") renderPair(it, l); else if (MODE === "qrel") renderQrel(it, l); else renderArticle(it, l);
+  drawPos();
+}
+function go(d) { pos = Math.max(0, Math.min(ITEMS.length - 1, pos + d)); render(); window.scrollTo(0, 0); }
+$("prev").onclick = () => go(-1); $("next").onclick = () => go(1);
+$("nextTodo").onclick = () => { const i = ITEMS.findIndex(it => !(labels[idOf(it)] || {}).done); if (i >= 0) { pos = i; render(); } };
+
+document.addEventListener("keydown", e => {
+  if (["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName) || e.ctrlKey || e.metaKey || e.altKey) return;
+  const l = cur(), k = e.key.toLowerCase();
+  const set = (f, v) => { l[f] = v; save(); render(); };
+  if (MODE === "article") {
+    const m = {q: ["headline", "consistent"], w: ["headline", "partly"], e: ["headline", "inconsistent"], z: ["sensationalism", 0], x: ["sensationalism", 1], c: ["sensationalism", 2]};
+    if (m[k]) set(...m[k]);
+    else if (k === "1") addSpan("claims", "named"); else if (k === "2") addSpan("claims", "anonymous");
+    else if (k === "3") addSpan("claims", "unattributed"); else if (k === "l") addSpan("loaded");
+    else if (k === "enter") finish(); else return;
+  } else if (MODE === "pair") {
+    const m = {y: "yes", n: "no", u: "unsure"};
+    if (m[k]) set("same_event", m[k]); else if (k === "enter") finish(); else return;
+  } else {
+    if (["0", "1", "2"].includes(k)) { l.grade = +k; l.done = true; save(); go(1); } else return;
+  }
+  e.preventDefault();
+});
+
+$("export").onclick = () => {
+  const who = $("annotator").value.trim();
+  if (!who) { alert("Enter your initials in Annotator first."); return; }
+  const rows = ITEMS.map(it => labels[idOf(it)]).filter(l => l && l.done).map(l => {
+    const {done, ...rest} = l; return JSON.stringify({...rest, annotator: who, batch: DATA.batch, tool: DATA.version});
+  });
+  const blob = new Blob([rows.join("\n") + "\n"], {type: "application/x-ndjson"});
+  const a = el("a", {href: URL.createObjectURL(blob), download: `labels-${MODE}-${DATA.batch}-${who}.jsonl`});
+  document.body.append(a); a.click(); a.remove();
+};
+$("importBtn").onclick = () => $("import").click();
+$("import").onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  let n = 0;
+  for (const line of (await f.text()).split("\n")) {
+    if (!line.trim()) continue;
+    const r = JSON.parse(line);
+    const k = r.task === "pair" ? r.pair_id : r.task === "qrel" ? r.qid + ":" + r.article_id : r.article_id;
+    labels[k] = {...r, done: true}; n++;
+  }
+  save(); render(); alert(`Imported ${n} labels.`);
+};
+render();
+</script></body></html>

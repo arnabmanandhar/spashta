@@ -26,10 +26,10 @@ dev = ["pytest>=7.4", "ruff>=0.6", "httpx>=0.27", "spashta[extract,api,nepali]"]
 spashta = "spashta.cli:main"
 
 [tool.setuptools]
-packages = ["spashta", "spashta.ingest", "spashta.analysis"]
+packages = ["spashta", "spashta.ingest", "spashta.analysis", "spashta.dataset"]
 
 [tool.setuptools.package-data]
-spashta = ["data/*.json"]
+spashta = ["data/*.json", "data/*.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
