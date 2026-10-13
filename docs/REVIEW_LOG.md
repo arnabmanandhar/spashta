@@ -396,3 +396,44 @@ rule for where keys go.
   free hosting steps.
 
 Tests: 85.
+
+## v1.2.0: from demo to evidence
+
+**Critique.** Every accuracy number came from 17 synthetic articles
+written for testing. There was no way to freeze a real corpus, publish it
+without the publishers' text, label it consistently, measure agreement,
+judge retrieval fairly across methods, or turn evaluation output into
+reportable tables. On the hosting side: DNS rebinding could slip past the
+private-address check, one fetch had no overall time limit, uvicorn
+logged reader addresses, a forged `X-Forwarded-For` dodged the rate
+limit, and reports had no link to share.
+
+**Changes.**
+- Corpus: `ingest --since` backfills weeks from sitemaps; `dataset
+  freeze/verify/index` make a hashed, reproducible snapshot.
+- Release: `dataset release` publishes URLs, hashes, labels and offsets
+  but no text (and refuses to if any slips in); `dataset rehydrate`
+  re-fetches and re-anchors spans by their hashes.
+- Labels: annotation guide v2 with anchored examples; stratified
+  sampling with a pilot batch and a double-annotated subset; a
+  self-contained HTML labelling page; Cohen's kappa per signal with
+  bootstrap intervals; adjudicated gold labels.
+- Measurement: pooled relevance judgments; per-language results with
+  intervals and significance; cross-language ablation; signal AUC,
+  precision/recall at shipped thresholds and cross-validated
+  calibration (thresholds moved to `data/thresholds.json`); LLM review
+  per provider (agreement, cost, latency); a real-scale benchmark;
+  error-case and results-table generators; a dataset card.
+- Hosting: pinned connections and a stricter public-address check; fetch
+  deadline; request size, time and concurrency limits; address-free logs;
+  rightmost `X-Forwarded-For`; permanent bilingual report pages; VPS
+  deployment with HTTPS, timers and backups.
+- Docs: `EVIDENCE.md` (the runbook), `ANNOTATION.md` v2,
+  `ERROR_ANALYSIS.md`, `FEEDBACK_LOG.md`, `DEPLOY_VPS.md`,
+  `SIGNAL_RULES.md`.
+
+Not done here, because they need people or real data: the labels, the
+second annotator, the queries, the real numbers, user feedback, and the
+live deployment. `docs/EVIDENCE.md` has the commands for each.
+
+Tests: 133.

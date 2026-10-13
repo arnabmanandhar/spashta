@@ -59,19 +59,29 @@ round is in [REVIEW_LOG.md](REVIEW_LOG.md).
 | `ingest/boilerplate.py` | Per-site repeated-paragraph removal |
 | `chunk.py` | Headline+lead chunk, then sentence-packed chunks with one sentence of overlap |
 | `embed.py` | `HashingEmbedder` (offline), multilingual-e5 and bge-m3 via sentence-transformers, optional bge-reranker-v2-m3 cross-encoder |
-| `xling.py` | Devanagari romaniser, phonetic keys, bilingual news glossary: the offline cross-language bridge |
+| `xling.py` | Devanagari romaniser, phonetic keys, bilingual news glossary: the offline cross-language bridge; each part switchable for ablation |
 | `retrieve.py` | BM25, cross-language BM25, dense cosine, RRF fusion, exclusions by article and outlet, related-coverage grouping |
-| `store.py` | SQLite: sources, articles, chunks with vectors, seen URLs |
+| `store.py` | SQLite: sources, articles, chunks with vectors, seen URLs, shared reports |
 | `analysis/lexicons.py` | English and Nepali word lists (sensational, attribution, anonymous, loaded, hedges) |
-| `analysis/signals.py` | Deterministic signals with evidence |
+| `analysis/signals.py` | Deterministic signals with evidence; summary cut-offs from `data/thresholds.json` |
 | `facts.py` | Quantified facts in both languages (digits, number words, lakh/crore), fact kinds, hedging; per-figure agreement across independent sources |
 | `story.py` | Same-story test (event type, shared subject, time window), opinion detection, near-duplicate detection, outlet ownership groups |
 | `analysis/corroboration.py` | Candidates from retrieval, filtered to the same story, collapsed to independent sources; figures confirmed elsewhere; relative tone |
 | `analysis/llm_review.py` | Claim audit through `anchor.llm`: untrusted text fenced, citations enforced, reviews cached, tokens and cost reported |
 | `report.py` | Weighted score, label, JSON and Markdown rendering, disclaimer in both languages |
-| `evaluate.py` | Retrieval metrics through `anchor.retrieval_metrics`; writes Anchor records |
-| `cli.py` | `spashta demo · sources · ingest · analyze · search · eval` |
-| `api.py` | FastAPI app and bilingual page; admin token, rate limits |
+| `evaluate.py` | Retrieval metrics through `anchor.retrieval_metrics`, per query language with bootstrap intervals; mode comparison with paired tests; cross-language ablation; writes Anchor records |
+| `cli.py`, `cli_dataset.py` | `spashta demo · sources · ingest · analyze · search · eval · dataset · qrels · results` |
+| `api.py` | FastAPI app: admin token, rate limits, request size/time/concurrency limits, address-free logs, stored reports |
+| `web.py`, `i18n.py` | Home page and the script-free permanent report page; Nepali labels |
+| `dataset/snapshot.py` | Hashed, reproducible corpus snapshots |
+| `dataset/release.py` | Public release without article text; re-fetching and span re-anchoring |
+| `dataset/topics.py`, `dataset/sample.py` | Topic tags, event clusters, stratified labelling sample, candidate pairs |
+| `dataset/labels.py`, `dataset/labeltool.py`, `data/labeltool.html` | Label format and validation, gold labels, the self-contained labelling page |
+| `dataset/agreement.py` | Cohen's kappa per signal (weighted, word-level), span F1, bootstrap intervals |
+| `dataset/qrels.py` | Pooled relevance judgments across retrieval modes |
+| `dataset/signal_eval.py` | Signal AUC, precision/recall at shipped thresholds, cross-validated calibration, pair evaluation, error cases |
+| `dataset/llm_compare.py` | LLM review per provider: agreement with labels, cost, latency |
+| `dataset/results.py` | Results tables, resume line, dataset card |
 
 ## What comes from Anchor
 
@@ -94,6 +104,7 @@ copy:
 - `seen(url, article_id, seen_at)`: listed URLs already fetched
 - `http_cache(url, etag, last_modified, body, content_type)`: conditional GET for feeds and sitemaps
 - `review_cache(key, data, created_at)`: LLM reviews by prompt and model
+- `reports(id, created_at, url, data)`: shared reports behind `/r/<id>`, immutable
 
 ## Report
 

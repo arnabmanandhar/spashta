@@ -39,7 +39,7 @@ from dataclasses import dataclass, field
 from typing import Optional, Protocol
 from urllib.parse import urljoin, urlparse, urlunparse
 
-USER_AGENT = "SpashtaBot/0.1 (+https://github.com/arnabmanandhar/spashta)"
+USER_AGENT = "SpashtaBot/1.2 (+https://github.com/arnabmanandhar/spashta)"
 MAX_BYTES = 5 * 1024 * 1024
 TIMEOUT_S = 20.0
 
