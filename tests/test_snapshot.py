@@ -88,3 +88,48 @@ def test_backfill_walks_only_sitemaps_in_the_window(fake_web):
     assert [i.url for i in items] == ["https://news.example/2026/10/05/undated-story-slug",
                                       "https://news.example/news/1002", "https://news.example/news/1003"]
     assert "https://news.example/sitemap-2026-07.xml" not in web.requests  # lastmod before the window
+
+
+def _snap(tmp_path):
+    store = _store_with_samples(":memory:")
+    snapshot.freeze(store.iter_articles(), tmp_path / "snap")
+    return {r["id"]: r for r in snapshot.read_records(tmp_path / "snap")}
+
+
+def test_release_has_no_text_and_rehydrate_reanchors_spans(tmp_path):
+    from spashta.dataset import release
+    from spashta.models import Article
+    recs = _snap(tmp_path)
+    rid, r = next((k, v) for k, v in recs.items() if v["lang"] == "ne")
+    phrase = r["body"][40:80]
+    labels = tmp_path / "gold.jsonl"
+    labels.write_text(json.dumps({"article_id": rid, "headline": "consistent", "sensationalism": 0,
+                                  "claims": [{"start": 40, "end": 80, "sourcing": "named", "text": phrase}],
+                                  "loaded": []}, ensure_ascii=False) + "\n", encoding="utf-8")
+    release.build_release(tmp_path / "snap", tmp_path / "rel", labels=labels)
+    blob = "".join(p.read_text(encoding="utf-8") for p in (tmp_path / "rel").glob("*.jsonl"))
+    assert phrase not in blob and r["title"] not in blob
+    assert release.check_no_text(tmp_path / "rel") == []
+
+    # The outlet has since added a paragraph at the top: the hash fails, the span moves but is found.
+    def fetch(url):
+        x = recs[next(k for k, v in recs.items() if v["url"] == url)]
+        body = ("Editor's note: updated.\n\n" + x["body"]) if x["id"] == rid else x["body"]
+        return Article(url=url, title=x["title"], body=body, source=x["source"], lang=x["lang"])
+
+    rep = release.rehydrate(tmp_path / "rel", tmp_path / "full", fetch=fetch)
+    assert rep["articles"] == {"exact": len(recs) - 1, "changed": 1, "failed": 0}
+    assert rep["spans"] == {"kept": 0, "moved": 1, "lost": 0}
+    (lab,) = [json.loads(x) for x in (tmp_path / "full" / "labels.full.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert lab["claims"][0]["text"] == phrase
+
+
+def test_release_refuses_text(tmp_path):
+    import pytest
+
+    from spashta.dataset import release
+    _snap(tmp_path)
+    pairs = tmp_path / "pairs.jsonl"
+    pairs.write_text(json.dumps({"a": "x", "b": "y", "same_event": True, "note": "z" * 400}) + "\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="article text"):
+        release.build_release(tmp_path / "snap", tmp_path / "rel", pairs=pairs)
