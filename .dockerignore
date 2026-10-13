@@ -13,3 +13,10 @@ __pycache__
 tests
 benchmarks
 docs
+deploy/data
+deploy/.env
+snapshots
+labels
+results
+release
+data

@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Spashta ingest every 3 hours
+
+[Timer]
+OnCalendar=*-*-* 00/3:17:00
+RandomizedDelaySec=300
+Persistent=true
+
+[Install]
+WantedBy=timers.target

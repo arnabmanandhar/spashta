@@ -45,7 +45,11 @@ The defaults are safe for a public URL:
   `SPASHTA_GLOBAL_RATE_PER_MIN` (default 120) for everyone together.
   Behind a host's proxy, set `SPASHTA_TRUST_PROXY=1` (the Dockerfile does)
   so the per-client limit uses the real visitor address. Without it, all
-  visitors share the proxy's address and one limit.
+  visitors share the proxy's address and one limit. The address is read
+  from the right of `X-Forwarded-For` (`SPASHTA_TRUSTED_HOPS`, default 1:
+  the entry the nearest proxy added), so a visitor can't forge it. If a
+  host chains two proxies and every visitor ends up sharing one limit,
+  set it to 2.
 - **Admin endpoints** stay disabled until `SPASHTA_ADMIN_TOKEN` is set.
 - **Fetching** refuses anything that isn't a public address on a web port
   (private, loopback, link-local, cloud metadata such as 169.254.169.254,
@@ -91,6 +95,12 @@ restart.
 
 Both workflows do nothing until their variables are set, so the public
 repo stays green without them.
+
+### A small VPS instead
+
+For a persistent disk, nightly backups and no sleeping, see
+[DEPLOY_VPS.md](DEPLOY_VPS.md) (EC2 or any Linux server, Docker Compose
+with Caddy for HTTPS, systemd timers for ingest and backups).
 
 ### Other free options
 

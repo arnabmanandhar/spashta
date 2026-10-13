@@ -1,0 +1,46 @@
+# Spashta on one small VPS (EC2, Lightsail, Hetzner, DigitalOcean): the app
+# behind Caddy, which gets and renews the HTTPS certificate by itself.
+# See docs/DEPLOY_VPS.md. Run from this folder: docker compose up -d --build
+services:
+  app:
+    build: ..
+    restart: unless-stopped
+    env_file: .env                 # secrets and settings; never committed (see ../.env.example)
+    environment:
+      SPASHTA_DB: /data/spashta.db
+      SPASHTA_TRUST_PROXY: "1"     # Caddy sets X-Forwarded-For to the visitor's address
+      SPASHTA_TRUSTED_HOPS: "1"
+      PORT: "7860"
+    volumes:
+      - ./data:/data               # database and backups survive rebuilds; chown 1000:1000 once
+    expose:
+      - "7860"                     # reachable only through Caddy
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "5"}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7860/api/health', timeout=5)"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on: [app]
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SPASHTA_DOMAIN: ${SPASHTA_DOMAIN:?set SPASHTA_DOMAIN in .env, e.g. spashta.example.com or 203-0-113-7.sslip.io}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+
+volumes:
+  caddy_data:
+  caddy_config:

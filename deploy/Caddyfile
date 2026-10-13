@@ -1,0 +1,17 @@
+# HTTPS for SPASHTA_DOMAIN, proxied to the app. Caddy keeps no access log
+# unless one is configured here, so reader addresses aren't written to disk.
+{$SPASHTA_DOMAIN} {
+	encode gzip
+	request_body {
+		max_size 256KB
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+	reverse_proxy app:7860 {
+		transport http {
+			read_timeout 60s
+		}
+	}
+}

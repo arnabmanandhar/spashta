@@ -1,0 +1,10 @@
+[Unit]
+Description=Spashta: back up the database
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/spashta/deploy
+EnvironmentFile=-/opt/spashta/deploy/.env
+ExecStart=/opt/spashta/deploy/backup.sh

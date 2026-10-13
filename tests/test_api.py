@@ -129,3 +129,11 @@ def test_pasted_text_is_stored_only_when_asked(client):
     d = client.post("/api/analyze", json={"title": "<b>शीर्षक</b>", "body": "पहिरोले घर बगायो।", "share": True}).json()
     page = client.get(d["permalink"]).text
     assert "&lt;b&gt;शीर्षक&lt;/b&gt;" in page and "<b>शीर्षक" not in page
+
+
+def test_forged_forwarded_for_entries_dont_dodge_the_limit(sample_index, monkeypatch):
+    monkeypatch.setenv("SPASHTA_TRUST_PROXY", "1")
+    c = TestClient(create_app(index=sample_index, rate_per_min=2))
+    codes = [c.get("/api/search", params={"q": "x"}, headers={"X-Forwarded-For": f"9.9.9.{i}, 1.1.1.1"}).status_code
+             for i in range(3)]
+    assert codes == [200, 200, 429]  # the proxy-added (rightmost) entry decides

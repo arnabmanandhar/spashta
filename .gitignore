@@ -21,3 +21,4 @@ private/
 *.full.jsonl
 /data/
 labels/*.html
+deploy/data/

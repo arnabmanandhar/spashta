@@ -1,0 +1,10 @@
+[Unit]
+Description=Spashta: poll news sources and index new articles
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/spashta/deploy
+ExecStart=/usr/bin/docker compose exec -T app spashta --db /data/spashta.db ingest --workers 4
+TimeoutStartSec=45min

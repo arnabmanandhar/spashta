@@ -25,8 +25,10 @@ Configuration (environment)
                                  requests with the admin token can spend the model key's quota
   SPASHTA_LLM_DAILY_LIMIT        LLM reviews per UTC day across all callers (default 50; cached reviews are free)
   SPASHTA_PUBLIC_URL             canonical https://host for permanent links (default: the request's host)
-  SPASHTA_TRUST_PROXY            "1" when behind a host's proxy (Hugging Face, Render, Fly): rate limit by
+  SPASHTA_TRUST_PROXY            "1" when behind a host's proxy (Hugging Face, Render, Fly, Caddy): rate limit by
                                  the client address in X-Forwarded-For instead of the proxy's
+  SPASHTA_TRUSTED_HOPS           how many proxies append to X-Forwarded-For (default 1): the client address is
+                                 taken that many entries from the right, so a forged header can't dodge the limit
   SPASHTA_REQUEST_TIMEOUT        seconds an analysis may take before the request gets 504 (default 30)
   SPASHTA_MAX_CONCURRENT         analyses running at once; more get 503 (default 4)
   SPASHTA_MAX_BODY_BYTES         largest request body accepted (default 262144)
@@ -182,6 +184,7 @@ def create_app(index: Optional[Index] = None, fetcher: Optional[Fetcher] = None,
     llm_budget = DailyBudget(llm_daily_limit if llm_daily_limit is not None
                              else int(os.environ.get("SPASHTA_LLM_DAILY_LIMIT", "50")))
     trust_proxy = _flag("SPASHTA_TRUST_PROXY")
+    trusted_hops = max(1, int(os.environ.get("SPASHTA_TRUSTED_HOPS", "1")))
 
     def get_index() -> Index:
         with state["lock"]:
@@ -192,9 +195,10 @@ def create_app(index: Optional[Index] = None, fetcher: Optional[Fetcher] = None,
 
     def client_address(request: Request) -> str:
         if trust_proxy:
-            forwarded = request.headers.get("x-forwarded-for", "")
+            forwarded = [p.strip() for p in request.headers.get("x-forwarded-for", "").split(",") if p.strip()]
             if forwarded:
-                return forwarded.split(",")[0].strip()
+                # The entry the nearest trusted proxy added; earlier entries can be forged by the client.
+                return forwarded[-trusted_hops] if len(forwarded) >= trusted_hops else forwarded[0]
         return request.client.host if request.client else "unknown"
 
     def client_key(request: Request) -> str:
