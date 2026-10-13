@@ -37,6 +37,7 @@ CREATE INDEX IF NOT EXISTS chunks_article ON chunks(article_id);
 CREATE TABLE IF NOT EXISTS review_cache (key TEXT PRIMARY KEY, data TEXT, created_at TEXT DEFAULT (datetime('now')));
 CREATE TABLE IF NOT EXISTS http_cache (url TEXT PRIMARY KEY, etag TEXT, last_modified TEXT, body BLOB, content_type TEXT);
 CREATE TABLE IF NOT EXISTS seen (url TEXT PRIMARY KEY, article_id TEXT, seen_at TEXT DEFAULT (datetime('now')));
+CREATE TABLE IF NOT EXISTS reports (id TEXT PRIMARY KEY, created_at TEXT DEFAULT (datetime('now')), url TEXT, data TEXT);
 """
 
 
@@ -92,6 +93,16 @@ class Store:
     def put_review(self, key: str, data: dict) -> None:
         with self._lock, self._db:
             self._db.execute("INSERT OR REPLACE INTO review_cache(key, data) VALUES (?, ?)", (key, json.dumps(data, ensure_ascii=False)))
+
+    def put_report(self, report_id: str, url: str, data: dict) -> None:
+        """Shared reports are immutable: a re-analysis gets a new id."""
+        with self._lock, self._db:
+            self._db.execute("INSERT INTO reports(id, url, data) VALUES (?, ?, ?)",
+                             (report_id, url, json.dumps(data, ensure_ascii=False, default=str)))
+
+    def get_report(self, report_id: str) -> Optional[dict]:
+        r = self._db.execute("SELECT data, created_at FROM reports WHERE id = ?", (report_id,)).fetchone()
+        return {**json.loads(r[0]), "created_at": r[1]} if r else None
 
     def get_cached(self, url: str):
         r = self._db.execute("SELECT etag, last_modified, body, content_type FROM http_cache WHERE url = ?", (url,)).fetchone()

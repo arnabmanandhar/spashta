@@ -111,3 +111,21 @@ def test_slow_analysis_times_out_and_frees_its_slot(sample_index, monkeypatch):
     time.sleep(0.5)
     monkeypatch.setattr(api, "analyze", real)
     assert c.post("/api/analyze", json={"title": "t", "body": "b c d"}).status_code == 200
+
+
+def test_url_reports_get_a_permanent_bilingual_page(client):
+    d = client.post("/api/analyze", json={"url": "https://news.example/2083/06/101234"}).json()
+    assert d["permalink"] == f"/r/{d['id']}"
+    page = client.get(d["permalink"])
+    assert page.status_code == 200 and "<script" not in page.text
+    assert "शीर्षक · Headline" in page.text and "og:title" in page.text
+    assert client.get(f"/api/reports/{d['id']}").json()["score"] == d["score"]
+    assert client.get("/r/nope!").status_code == 404 and client.get("/r/abcdefgh").status_code == 404
+
+
+def test_pasted_text_is_stored_only_when_asked(client):
+    d = client.post("/api/analyze", json={"title": "<b>शीर्षक</b>", "body": "पहिरोले घर बगायो। प्रहरीले जनायो।"}).json()
+    assert "permalink" not in d
+    d = client.post("/api/analyze", json={"title": "<b>शीर्षक</b>", "body": "पहिरोले घर बगायो।", "share": True}).json()
+    page = client.get(d["permalink"]).text
+    assert "&lt;b&gt;शीर्षक&lt;/b&gt;" in page and "<b>शीर्षक" not in page

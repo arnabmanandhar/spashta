@@ -7,7 +7,10 @@ HTTP API and a minimal bilingual web page.
 Endpoints
   GET  /                      paste a link or text, get a report (no JS framework)
   GET  /api/health            counts and versions
-  POST /api/analyze           {"url"} or {"title", "body"}; "llm": true for the claim review
+  GET  /r/<id>                a stored report as a page (bilingual, no script, works on phones)
+  GET  /api/reports/<id>      a stored report as JSON
+  POST /api/analyze           {"url"} or {"title", "body"}; "llm": true for the claim review; "share" stores the
+                              report under a permanent link (default: yes for a URL, no for pasted text)
   GET  /api/search?q=&k=      hybrid search
   GET  /api/sources           sources with status
   POST /api/sources           {"url", "name"?, "lang"?}           (admin)
@@ -21,6 +24,7 @@ Configuration (environment)
   SPASHTA_PUBLIC_LLM             "1" lets anyone request the LLM claim review; default off, so only
                                  requests with the admin token can spend the model key's quota
   SPASHTA_LLM_DAILY_LIMIT        LLM reviews per UTC day across all callers (default 50; cached reviews are free)
+  SPASHTA_PUBLIC_URL             canonical https://host for permanent links (default: the request's host)
   SPASHTA_TRUST_PROXY            "1" when behind a host's proxy (Hugging Face, Render, Fly): rate limit by
                                  the client address in X-Forwarded-For instead of the proxy's
   SPASHTA_REQUEST_TIMEOUT        seconds an analysis may take before the request gets 504 (default 30)
@@ -50,6 +54,7 @@ import hashlib
 import hmac
 import logging
 import os
+import re
 import secrets
 import threading
 import time
@@ -61,17 +66,18 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
-from . import __version__
+from . import __version__, web
 from . import lang as L
 from .embed import get_embedder
 from .fetch import Fetcher, FetchError
 from .ingest import fetch_article, ingest_sources
 from .models import Article, Source, host_of
-from .report import analyze
+from .report import DISCLAIMER_NE, analyze
 from .retrieve import Index
 from .store import Store
 
 MAX_TEXT = 50_000
+REPORT_ID = re.compile(r"[A-Za-z0-9_-]{6,24}")
 MAX_ARTICLE_CHARS = 60_000  # a fetched page's text is cut here before analysis
 SECURITY_HEADERS = {
     "X-Content-Type-Options": "nosniff",
@@ -104,6 +110,7 @@ class AnalyzeRequest(BaseModel):
     title: Optional[str] = Field(default=None, max_length=500)
     body: Optional[str] = Field(default=None, max_length=MAX_TEXT)
     llm: bool = False
+    share: Optional[bool] = None  # store the report under a permanent link; default: yes for a URL, no for pasted text
 
 
 class SourceRequest(BaseModel):
@@ -272,7 +279,14 @@ def create_app(index: Optional[Index] = None, fetcher: Optional[Fetcher] = None,
             title = (req.title or "").strip() or req.body.strip().split("\n", 1)[0][:200]
             text = f"{title}\n{req.body}"
             article = Article(url="text:", title=L.clean(title), body=L.clean(req.body), lang=L.detect_language(text))
-        return analyze(article, index, use_llm=req.llm).to_dict()
+        report = analyze(article, index, use_llm=req.llm).to_dict()
+        report.update(version=__version__, disclaimer_ne=DISCLAIMER_NE)
+        share = req.share if req.share is not None else bool(req.url)
+        if share:
+            report_id = secrets.token_urlsafe(8)
+            index.store.put_report(report_id, article.url, report)
+            report.update(id=report_id, permalink=f"/r/{report_id}")
+        return report
 
     @app.get("/api/search", dependencies=[Depends(rate)])
     def search(q: str, k: int = 10, index: Index = Depends(get_index)) -> list[dict]:
@@ -302,53 +316,26 @@ def create_app(index: Optional[Index] = None, fetcher: Optional[Fetcher] = None,
 
     @app.get("/", response_class=HTMLResponse)
     def home() -> str:
-        return PAGE
+        return web.home_page()
+
+    def stored(report_id: str, index: Index) -> dict:
+        r = index.store.get_report(report_id) if REPORT_ID.fullmatch(report_id) else None
+        if r is None:
+            raise HTTPException(404, "No such report.")
+        return r
+
+    @app.get("/api/reports/{report_id}", dependencies=[Depends(rate)])
+    def report_json(report_id: str, index: Index = Depends(get_index)) -> dict:
+        return stored(report_id, index)
+
+    @app.get("/r/{report_id}", response_class=HTMLResponse, dependencies=[Depends(rate)])
+    def report_html(report_id: str, request: Request, index: Index = Depends(get_index)) -> str:
+        r = stored(report_id, index)
+        base = os.environ.get("SPASHTA_PUBLIC_URL", "").rstrip("/") or str(request.base_url).rstrip("/")
+        return web.report_page(r, f"{base}/r/{report_id}")
 
     return app
 
-
-PAGE = """<!doctype html>
-<html lang="ne"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Spashta · स्पष्ट</title>
-<style>
-:root{--bg:#fbfaf7;--fg:#1d1d1b;--muted:#6b6a65;--line:#e4e1d8;--card:#fff;--good:#2f7d4f;--mid:#b07d1a;--bad:#b23b2e}
-@media (prefers-color-scheme:dark){:root{--bg:#161614;--fg:#ecebe6;--muted:#a3a19a;--line:#33322e;--card:#1f1f1c}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.55 system-ui,"Noto Sans Devanagari",sans-serif}
-main{max-width:760px;margin:0 auto;padding:24px 16px 64px}h1{margin:0 0 4px;font-size:28px}p.sub{margin:0 0 20px;color:var(--muted)}
-textarea,input{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--fg);font:inherit}
-textarea{min-height:140px}button{margin-top:10px;padding:10px 18px;border:0;border-radius:8px;background:var(--fg);color:var(--bg);font:inherit;cursor:pointer}
-.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-top:16px}
-.score{font-size:40px;font-weight:700}.sig h3{margin:0 0 4px;font-size:16px}.sig{border-top:1px solid var(--line);padding-top:12px;margin-top:12px}
-.bar{height:6px;border-radius:3px;background:var(--line);overflow:hidden;margin:6px 0}.bar span{display:block;height:100%}
-ul{margin:6px 0 0 18px;padding:0;color:var(--muted)}small{color:var(--muted)}a{color:inherit}
-</style></head><body><main>
-<h1>स्पष्ट · Spashta</h1>
-<p class="sub">समाचार कसरी लेखिएको छ, जाँच्नुहोस्। Check how a news story is told.</p>
-<input id="url" placeholder="समाचारको लिङ्क / article link">
-<p class="sub" style="margin:8px 0">वा / or</p>
-<textarea id="text" placeholder="शीर्षक पहिलो लाइनमा, त्यसपछि समाचार / Headline on the first line, then the story"></textarea>
-<button id="go">जाँच्नुहोस् · Check</button>
-<div id="out"></div>
-<p><small>Spashta measures presentation, sourcing and corroboration. It does not decide whether a story is true.</small></p>
-</main><script>
-const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const color=c=>c<0.25?"var(--good)":c<0.6?"var(--mid)":"var(--bad)";
-document.getElementById("go").onclick=async()=>{
-  const url=document.getElementById("url").value.trim(), text=document.getElementById("text").value.trim();
-  const out=document.getElementById("out"); out.innerHTML='<div class="card">…</div>';
-  const [title,...rest]=text.split("\\n");
-  const body=url?{url}:{title,body:rest.join("\\n")};
-  try{
-    const r=await fetch("/api/analyze",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-    const d=await r.json(); if(!r.ok) throw new Error(d.detail||r.status);
-    let h=`<div class="card"><div class="score">${d.score}/100</div><div>${esc(d.label)}</div><small>${esc(d.title)}</small>`;
-    for(const s of d.signals){h+=`<div class="sig"><h3>${esc(s.name)}</h3><div class="bar"><span style="width:${Math.round(s.concern*100)}%;background:${color(s.concern)}"></span></div>${esc(s.summary)}<ul>${s.evidence.map(e=>`<li>${esc(e)}</li>`).join("")}</ul></div>`}
-    if(d.related.length){h+=`<div class="sig"><h3>Other coverage</h3><ul>${d.related.map(x=>`<li><a href="${/^https?:\\/\\//.test(x.url)?esc(x.url):"#"}" rel="noopener nofollow">${esc(x.title)}</a> · ${esc(x.source)} · ${esc(x.role)}</li>`).join("")}</ul></div>`}
-    out.innerHTML=h+`<p><small>${esc(d.disclaimer)}</small></p></div>`;
-  }catch(e){out.innerHTML=`<div class="card">${esc(e.message)}</div>`}
-};
-</script></body></html>
-"""
 
 def _configure_logging() -> None:
     """One line per request on stderr (the container log), unless the host
