@@ -14,3 +14,8 @@ spashta.db
 .env.*
 !.env.example
 .DS_Store
+
+# Corpus snapshots hold full article text: keep them local, publish only `spashta dataset release` output
+snapshots/
+private/
+*.full.jsonl

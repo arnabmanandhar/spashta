@@ -16,6 +16,8 @@ sitemap already says about them) for the resolved source.
 from __future__ import annotations
 
 import re
+from calendar import monthrange
+from datetime import datetime, timezone
 from typing import Optional
 from urllib.parse import urljoin, urlparse
 
@@ -112,6 +114,72 @@ def list_articles(source: Source, fetcher: Fetcher, limit: int = 50) -> list[Fee
         url = canonical_url(it.url)
         unique.setdefault(url, it.model_copy(update={"url": url}))
     return list(unique.values())[:limit]
+
+
+_DATE_IN_URL = re.compile(r"(20\d\d)[-_/]?(0[1-9]|1[0-2])(?:[-_/]?([0-3]\d))?(?!\d)")
+
+
+def _url_period(url: str) -> Optional[tuple[datetime, datetime]]:
+    """The month (or day) a dated sitemap or article URL covers:
+    sitemap-2026-09.xml, post-sitemap2026_09.xml, /2026/09/14/slug."""
+    m = _DATE_IN_URL.search(urlparse(url).path)
+    if not m:
+        return None
+    year, month = int(m.group(1)), int(m.group(2))
+    if m.group(3) and 1 <= int(m.group(3)) <= monthrange(year, month)[1]:
+        day = int(m.group(3))
+        return (datetime(year, month, day, tzinfo=timezone.utc), datetime(year, month, day, 23, 59, 59, tzinfo=timezone.utc))
+    return (datetime(year, month, 1, tzinfo=timezone.utc),
+            datetime(year, month, monthrange(year, month)[1], 23, 59, 59, tzinfo=timezone.utc))
+
+
+def _overlaps(period: Optional[tuple[datetime, datetime]], since: datetime, until: datetime) -> bool:
+    return period is None or (period[0] <= until and period[1] >= since)
+
+
+def backfill_items(source: Source, fetcher: Fetcher, since: datetime, until: Optional[datetime] = None,
+                   limit: int = 5000, max_sitemaps: int = 80) -> list[FeedItem]:
+    """Article URLs published between since and until, for building a corpus
+    that reaches back weeks. Feeds only list the last day or two, so this
+    walks the site's sitemaps, skipping child sitemaps that by their lastmod
+    or the date in their name can't hold anything in the window. Sites
+    without a sitemap fall back to the feed or the home page (recent only)."""
+    until = until or datetime.now(timezone.utc)
+    if source.kind == "sitemap" and source.endpoint:
+        roots = [source.endpoint]
+    else:
+        roots = fetcher.sitemaps_from_robots(source.url) + [urljoin(source.url, p) for p in COMMON_SITEMAPS]
+    queue, seen_maps, fetched, parsed = list(dict.fromkeys(roots)), set(), 0, 0
+    found: dict[str, FeedItem] = {}
+    while queue and fetched < max_sitemaps and len(found) < limit:
+        url = queue.pop(0)
+        if url in seen_maps:
+            continue
+        seen_maps.add(url)
+        try:
+            text = fetcher.get(url).text
+            fetched += 1
+            if not looks_like_sitemap(text):
+                continue
+            sm = parse_sitemap(text)
+            parsed += 1
+        except (FetchError, ValueError, SyntaxError):  # ET.ParseError is a SyntaxError
+            continue
+        for child in reversed(sm.children):  # newest last in most indexes
+            lastmod = sm.child_lastmod.get(child)
+            if (lastmod is None or lastmod >= since) and _overlaps(_url_period(child), since, until):
+                queue.append(child)
+        for item in sm.entries:
+            when = item.published
+            if when is not None and not since <= when <= until:
+                continue
+            if when is None and not (_url_period(item.url) and _overlaps(_url_period(item.url), since, until)):
+                continue
+            found.setdefault(canonical_url(item.url), item.model_copy(update={"url": canonical_url(item.url)}))
+    if not parsed:
+        recent = list_articles(source, fetcher, limit)
+        return [i for i in recent if i.published is None or since <= i.published <= until][:limit]
+    return sorted(found.values(), key=lambda i: i.published.timestamp() if i.published else 0)[:limit]
 
 
 def resolve_safely(source: Source, fetcher: Fetcher) -> tuple[Source, Optional[str]]:

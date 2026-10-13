@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import xml.etree.ElementTree as ET  # noqa: S405 - expat limits entity expansion
 from dataclasses import dataclass, field
+from datetime import datetime
 
 from ..models import FeedItem
 from .feeds import _child, _local, _text, parse_date
@@ -16,6 +17,7 @@ from .feeds import _child, _local, _text, parse_date
 class Sitemap:
     entries: list[FeedItem] = field(default_factory=list)
     children: list[str] = field(default_factory=list)  # nested sitemaps from an index
+    child_lastmod: dict[str, datetime] = field(default_factory=dict)  # when an index says a child last changed
 
 
 def looks_like_sitemap(text: str) -> bool:
@@ -27,7 +29,13 @@ def parse_sitemap(text: str) -> Sitemap:
     root = ET.fromstring(text.lstrip().encode("utf-8"))  # noqa: S314
     out = Sitemap()
     if _local(root.tag) == "sitemapindex":
-        out.children = [_text(s, "loc") for s in root if _local(s.tag) == "sitemap" and _text(s, "loc")]
+        for s in root:
+            loc = _text(s, "loc") if _local(s.tag) == "sitemap" else ""
+            if loc:
+                out.children.append(loc)
+                lastmod = parse_date(_text(s, "lastmod"))
+                if lastmod:
+                    out.child_lastmod[loc] = lastmod
         return out
     for u in root:
         if _local(u.tag) != "url":

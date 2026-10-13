@@ -145,6 +145,17 @@ class Store:
         return [self._article(r) for r in self._db.execute(
             "SELECT * FROM articles ORDER BY COALESCE(published, fetched_at) DESC LIMIT ?", (limit,))]
 
+    def iter_articles(self, batch: int = 500):
+        """Every stored article, oldest first, without loading the corpus at once."""
+        last = ""
+        while True:
+            rows = self._db.execute("SELECT * FROM articles WHERE id > ? ORDER BY id LIMIT ?", (last, batch)).fetchall()
+            if not rows:
+                return
+            for r in rows:
+                yield self._article(r)
+            last = rows[-1]["id"]
+
     def count(self) -> dict[str, int]:
         one = lambda q: self._db.execute(q).fetchone()[0]  # noqa: E731
         return {"sources": one("SELECT COUNT(*) FROM sources"), "articles": one("SELECT COUNT(*) FROM articles"),

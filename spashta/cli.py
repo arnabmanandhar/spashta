@@ -6,6 +6,9 @@ Command line.
   spashta sources seed                 add the bundled list of Nepali and English outlets
   spashta sources list                 sources with their resolved kind and article counts
   spashta ingest [--limit N]           poll every enabled source and index new articles
+  spashta ingest --since 2026-09-15    backfill a date window from the sites' sitemaps
+  spashta dataset ...                  snapshots, sampling, labels, agreement, release (spashta dataset -h)
+  spashta qrels ...                    pooled relevance judgments for retrieval queries (spashta qrels -h)
   spashta analyze URL|--file F|--text  integrity report for one article
   spashta search QUERY                 hybrid search over the index
   spashta eval [QUESTIONS]             retrieval metrics (Anchor) over a question set
@@ -84,11 +87,26 @@ def cmd_sources(args) -> int:
     return 0
 
 
+def parse_day(value: str | None, end: bool = False):
+    """2026-09-15 -> that day's start (or end) in Nepal time; full ISO timestamps pass through."""
+    if not value:
+        return None
+    from datetime import datetime, time, timedelta, timezone
+    nepal = timezone(timedelta(hours=5, minutes=45))
+    if len(value) == 10:
+        d = datetime.combine(datetime.fromisoformat(value).date(), time.max if end else time.min)
+        return d.replace(tzinfo=nepal)
+    d = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    return d if d.tzinfo else d.replace(tzinfo=nepal)
+
+
 def cmd_ingest(args) -> int:
     index = _index(args)
     fetcher = Fetcher(delay_s=args.delay, cache=index.store)
     sources = index.store.sources(enabled_only=True)
-    results = ingest_sources(sources, fetcher, index, limit=args.limit, workers=args.workers)
+    since, until = parse_day(args.since), parse_day(args.until, end=True)
+    limit = args.limit if args.limit is not None else (5000 if since else 30)
+    results = ingest_sources(sources, fetcher, index, limit=limit, workers=args.workers, since=since, until=until)
     for s, r in zip(sources, results):
         print(f"{r.kind or '?':<8} found {r.found:>3} · added {r.added:>3} · skipped {r.skipped:>3}"
               f" · errors {len(r.errors):>2}  {s.url}")
@@ -174,7 +192,9 @@ def build_parser() -> argparse.ArgumentParser:
     s.set_defaults(func=cmd_sources)
 
     i = sub.add_parser("ingest", help="poll sources and index new articles")
-    i.add_argument("--limit", type=int, default=30, help="articles per source")
+    i.add_argument("--limit", type=int, help="articles per source (default 30; 5000 with --since)")
+    i.add_argument("--since", help="backfill articles published on or after this date (YYYY-MM-DD) from sitemaps")
+    i.add_argument("--until", help="end of the backfill window (YYYY-MM-DD, default now)")
     i.add_argument("--delay", type=float, default=1.0, help="seconds between requests to one host")
     i.add_argument("--workers", type=int, default=4, help="sources fetched in parallel")
     i.set_defaults(func=cmd_ingest)
@@ -201,6 +221,9 @@ def build_parser() -> argparse.ArgumentParser:
     e.add_argument("--compare", action="store_true", help="ablation: lexical vs dense vs hybrid, with significance")
     e.add_argument("--signals", nargs="?", const="samples", help="AUC of each signal against labelled articles (default: samples)")
     e.set_defaults(func=cmd_eval)
+
+    from .cli_dataset import add_dataset_commands
+    add_dataset_commands(sub)
     return p
 
 

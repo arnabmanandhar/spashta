@@ -17,11 +17,13 @@ from __future__ import annotations
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Optional
 
 from ..fetch import Fetcher, FetchError
 from ..models import Article, FeedItem, Source, article_id
 from . import boilerplate
-from .discover import list_articles, looks_like_article, resolve
+from .discover import backfill_items, list_articles, looks_like_article, resolve
 from .extract import extract_article, parse_page
 from .feeds import parse_feed
 from .sitemap import parse_sitemap
@@ -29,7 +31,7 @@ from .sitemap import parse_sitemap
 log = logging.getLogger("spashta.ingest")
 MIN_BODY_CHARS = 200
 
-__all__ = ["IngestResult", "collect_source", "extract_article", "fetch_article", "ingest_source", "ingest_sources", "list_articles", "looks_like_article",
+__all__ = ["IngestResult", "backfill_items", "collect_source", "extract_article", "fetch_article", "ingest_source", "ingest_sources", "list_articles", "looks_like_article",
            "parse_feed", "parse_page", "parse_sitemap", "resolve"]
 
 
@@ -59,16 +61,19 @@ def fetch_article(url: str, fetcher: Fetcher, hint: FeedItem | None = None) -> A
     return a
 
 
-def collect_source(source: Source, fetcher: Fetcher, store, limit: int = 30) -> tuple[IngestResult, list[Article]]:
+def collect_source(source: Source, fetcher: Fetcher, store, limit: int = 30, since: Optional[datetime] = None,
+                   until: Optional[datetime] = None) -> tuple[IngestResult, list[Article]]:
     """Resolve the source if needed and fetch its new articles, with the
-    site's boilerplate removed. Thread-safe: no index access."""
+    site's boilerplate removed. With since, backfill the window from the
+    site's sitemaps instead of reading only the latest feed items.
+    Thread-safe: no index access."""
     result = IngestResult(source.url)
     try:
         if source.kind == "unresolved" or not source.endpoint:
             source = resolve(source, fetcher)
             store.add_source(source)
         result.kind = source.kind
-        items = list_articles(source, fetcher, limit)
+        items = backfill_items(source, fetcher, since, until, limit) if since else list_articles(source, fetcher, limit)
     except FetchError as e:
         result.errors.append(str(e))
         store.mark_polled(source.url, str(e))
@@ -109,11 +114,12 @@ def ingest_source(source: Source, fetcher: Fetcher, index, limit: int = 30) -> I
     return result
 
 
-def ingest_sources(sources: list[Source], fetcher: Fetcher, index, limit: int = 30, workers: int = 4) -> list[IngestResult]:
+def ingest_sources(sources: list[Source], fetcher: Fetcher, index, limit: int = 30, workers: int = 4,
+                   since: Optional[datetime] = None, until: Optional[datetime] = None) -> list[IngestResult]:
     """Collect sources in parallel (Fetcher still spaces requests per host),
     then index everything in one pass."""
     with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
-        collected = list(pool.map(lambda s: collect_source(s, fetcher, index.store, limit), sources))
+        collected = list(pool.map(lambda s: collect_source(s, fetcher, index.store, limit, since, until), sources))
     articles = [a for _, batch in collected for a in batch]
     if articles:
         index.add_many(articles)
