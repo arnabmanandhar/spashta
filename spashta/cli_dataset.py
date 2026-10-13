@@ -14,6 +14,7 @@ Dataset commands: from a live store to a frozen, labelled, measured corpus.
   spashta qrels pool QUERIES -o pool.jsonl [--depth 10]   pool top results of every retrieval mode for judging
   spashta qrels build QUERIES judgments.jsonl -o questions.json --pool pool.jsonl
   spashta dataset errors SNAP gold.jsonl [--retrieval eval.json] -o candidates.md   failure cases to write up
+  spashta dataset llm-compare SNAP gold.jsonl --providers gemini groq:openai/gpt-oss-120b   LLM review vs labels
   spashta dataset release SNAP OUT [--labels ...]    the public part: no article text, hashes and offsets only
   spashta dataset rehydrate RELEASE OUT              re-fetch the text of a release and re-anchor its labels
 """
@@ -189,6 +190,23 @@ def cmd_errors(args) -> int:
     return 0
 
 
+def cmd_llm_compare(args) -> int:
+    from .dataset import labels as LB
+    from .dataset import llm_compare
+    prices = llm_compare.parse_prices(args.price)
+    conns = {spec: llm_compare.connection(spec, prices.get(spec)) for spec in args.providers}
+    index = Index(Store(args.db), get_embedder(args.embedder))
+    if not index.chunks:
+        print("the index is empty: run `spashta --db DB dataset index SNAP` first", file=sys.stderr)
+        return 2
+    result = llm_compare.compare(index, _records_by_id(args.snapshot), LB.read(args.gold), conns, n=args.n,
+                                 pause_s=args.pause)
+    if args.out:
+        Path(args.out).write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    _print({k: v for k, v in result.items() if k != "per_article"})
+    return 0
+
+
 def cmd_release(args) -> int:
     from .dataset import release
     m = release.build_release(args.snapshot, args.out, args.labels, args.pairs, args.queries, args.sample, args.card)
@@ -317,6 +335,16 @@ def add_dataset_commands(sub) -> None:
     er.add_argument("--per-signal", type=int, default=5)
     er.add_argument("-o", "--out", required=True)
     er.set_defaults(func=cmd_errors)
+
+    lc = ds.add_parser("llm-compare", help="LLM claim review per provider: agreement with labels, cost, latency")
+    lc.add_argument("snapshot")
+    lc.add_argument("gold")
+    lc.add_argument("--providers", nargs="+", required=True, help="provider or provider:model, keys from the environment")
+    lc.add_argument("--price", nargs="*", default=[], help="SPEC=IN/OUT USD per million tokens, e.g. gemini:gemini-2.5-flash=0.30/2.50")
+    lc.add_argument("--n", type=int, default=50)
+    lc.add_argument("--pause", type=float, default=4.0, help="seconds between calls (free tiers limit requests per minute)")
+    lc.add_argument("--out")
+    lc.set_defaults(func=cmd_llm_compare)
 
     r = ds.add_parser("release", help="write the redistributable dataset (no article text)")
     r.add_argument("snapshot")

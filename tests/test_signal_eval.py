@@ -68,3 +68,34 @@ def test_cli_eval_gold_and_errors(tmp_path, capsys):
     text = (tmp_path / "errors.md").read_text(encoding="utf-8")
     assert "# Retrieval failures" in text
     assert snapshot.verify(tmp_path / "snap") == [] and sample_articles()
+
+
+def test_llm_compare_with_fake_providers(tmp_path):
+    from anchor import llm
+
+    from spashta.analysis.llm_review import ClaimCheck, Review
+    from spashta.analysis.signals import Signal
+    from spashta.dataset import llm_compare
+    from spashta.embed import HashingEmbedder
+    from spashta.retrieve import Index
+    from spashta.store import Store
+    recs, gold = _setup(tmp_path)
+    index = Index(Store(":memory:"), HashingEmbedder())
+    index.add_many(snapshot.load(tmp_path / "snap"))
+    calls = []
+
+    def fake_review(article, passages, conn, cache=None):
+        calls.append(conn.provider)
+        fair = conn.provider == "gemini" or len(article.title) % 2 == 0
+        return Review(Signal("claims", 0.2, "", [], {"input_tokens": 1000, "output_tokens": 200,
+                                                    "cost_usd": conn.cost(1000, 200)}),
+                      [ClaimCheck("c", "supported", None)], fair, "", conn.name)
+
+    conns = {"gemini": llm.Connection("gemini", "m", price_per_mtok=(0.3, 2.5)), "groq": llm.Connection("groq", "m")}
+    res = llm_compare.compare(index, recs, gold, conns, n=6, pause_s=0, review_fn=fake_review, sleep=lambda s: None)
+    assert res["articles"] == 6 and len(calls) == 12
+    g = res["summary"]["gemini"]
+    assert g["ok"] == 6 and g["tokens_per_article"] == [1000, 200] and g["usd_per_article"] == 0.0008
+    assert res["summary"]["groq"]["usd_per_article"] is None
+    assert "gemini vs groq" in res["between_providers"]
+    assert llm_compare.parse_prices(["gemini:x=0.3/2.5"]) == {"gemini:x": (0.3, 2.5)}
