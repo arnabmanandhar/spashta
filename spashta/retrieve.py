@@ -98,9 +98,10 @@ class Index:
     old chunks are tombstoned), so polling costs grow with what's new, not
     with the size of the corpus."""
 
-    def __init__(self, store: Store, embedder: Embedder, reranker=None):
+    def __init__(self, store: Store, embedder: Embedder, reranker=None, xling_config: xling.XlingConfig = xling.FULL):
         self.store, self.embedder = store, embedder
         self.reranker = reranker  # optional: anything with score(query, texts) -> list[float]
+        self.xling_config = xling_config
         self._lock = threading.RLock()  # searches and appends from API worker threads
         self.reload()
 
@@ -125,7 +126,7 @@ class Index:
         self.alive.append(True)
         self.terms.append(set(t))
         self.bm25.add(t)
-        self.xbm25.add(xling.xling_terms(chunk.text))
+        self.xbm25.add(xling.xling_terms(chunk.text, self.xling_config))
         self._rows.append(np.asarray(vector, dtype=np.float32))
         self._matrix = None
         self.rows_of.setdefault(chunk.article_id, []).append(row)
@@ -199,7 +200,7 @@ class Index:
         lex = self.bm25.scores(q_terms)
         lex[~allowed] = 0
         lex_order = [i for i in np.argsort(-lex, kind="stable")[:depth] if lex[i] > 0]
-        xl = self.xbm25.scores(xling.xling_terms(query))
+        xl = self.xbm25.scores(xling.xling_terms(query, self.xling_config))
         xl[~allowed] = 0
         xl_order = [i for i in np.argsort(-xl, kind="stable")[:depth] if xl[i] > 0]
         q_vec = self.embedder.embed([query], kind="query")[0]

@@ -11,6 +11,8 @@ Dataset commands: from a live store to a frozen, labelled, measured corpus.
   spashta dataset check SNAP labels.jsonl            validate labels against the snapshot
   spashta dataset agreement SNAP a.jsonl b.jsonl     Cohen's kappa per signal, with 95% intervals
   spashta dataset gold primary.jsonl [--adjudicated c.jsonl] -o gold.jsonl
+  spashta qrels pool QUERIES -o pool.jsonl [--depth 10]   pool top results of every retrieval mode for judging
+  spashta qrels build QUERIES judgments.jsonl -o questions.json --pool pool.jsonl
   spashta dataset release SNAP OUT [--labels ...]    the public part: no article text, hashes and offsets only
   spashta dataset rehydrate RELEASE OUT              re-fetch the text of a release and re-anchor its labels
 """
@@ -167,7 +169,45 @@ def cmd_rehydrate(args) -> int:
     return 0
 
 
+def cmd_qrels_pool(args) -> int:
+    from .dataset import qrels
+    index = Index(Store(args.db), get_embedder(args.embedder))
+    rows = qrels.pool(index, args.queries, depth=args.depth)
+    _write_jsonl(args.out, rows)
+    per_q = len({r["qid"] for r in rows})
+    print(f"{len(rows)} (query, article) pairs to judge for {per_q} queries -> {args.out}")
+    return 0
+
+
+def cmd_qrels_build(args) -> int:
+    from .dataset import labels as LB
+    from .dataset import qrels
+    judgments = [r for path in args.judgments for r in LB.read(path)]
+    pool_rows = _read_jsonl(args.pool) if args.pool else None
+    data = qrels.build_questions(args.queries, judgments, pool_rows, args.min_grade)
+    Path(args.out).write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    if pool_rows:
+        _print(qrels.pool_stats(pool_rows, judgments, args.min_grade))
+    print(f"{len(data['questions'])} questions -> {args.out}")
+    return 0
+
+
 def add_dataset_commands(sub) -> None:
+    q = sub.add_parser("qrels", help="pooled relevance judgments for retrieval queries")
+    qs = q.add_subparsers(dest="action", required=True)
+    qp = qs.add_parser("pool", help="union of every retrieval mode's top results, shuffled, for judging")
+    qp.add_argument("queries", help="queries (JSON or JSONL) with query, lang (ne, en, rom) and optional qid, tags")
+    qp.add_argument("-o", "--out", required=True)
+    qp.add_argument("--depth", type=int, default=10)
+    qp.set_defaults(func=cmd_qrels_pool)
+    qb = qs.add_parser("build", help="questions file for `spashta eval` from judgments")
+    qb.add_argument("queries")
+    qb.add_argument("judgments", nargs="+", help="relevance labels (JSONL, task qrel)")
+    qb.add_argument("-o", "--out", required=True)
+    qb.add_argument("--pool", help="the pool file, for URLs and pool statistics")
+    qb.add_argument("--min-grade", type=int, default=1, help="lowest grade counted as relevant (1 = partly)")
+    qb.set_defaults(func=cmd_qrels_build)
+
     d = sub.add_parser("dataset", help="snapshots, sampling, labels, agreement and release")
     ds = d.add_subparsers(dest="action", required=True)
 

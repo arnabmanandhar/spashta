@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import dataclass
 from functools import lru_cache
 from importlib import resources
 
@@ -162,15 +163,42 @@ def concepts(text: str) -> list[str]:
     return out
 
 
-def xling_terms(text: str) -> list[str]:
+@dataclass(frozen=True)
+class XlingConfig:
+    """Which bridges the cross-language index uses; switch one off to
+    measure what it contributes (`spashta eval --ablate-xling`)."""
+
+    romanize: bool = True  # Devanagari -> Latin before keying
+    phonetic: bool = True  # collapse spelling variation; off = exact (romanised) spelling
+    glossary: bool = True  # bilingual concept terms
+    enabled: bool = True  # off = no cross-language ranking at all
+
+    @property
+    def name(self) -> str:
+        if not self.enabled:
+            return "no cross-language index"
+        off = [n for n, on in (("romanisation", self.romanize), ("phonetic keys", self.phonetic),
+                               ("glossary", self.glossary)) if not on]
+        return "full" if not off else "without " + " and ".join(off)
+
+
+FULL = XlingConfig()
+ABLATIONS = (FULL, XlingConfig(romanize=False), XlingConfig(phonetic=False), XlingConfig(glossary=False),
+             XlingConfig(enabled=False))
+
+
+def xling_terms(text: str, config: XlingConfig = FULL) -> list[str]:
     """Index terms for the cross-language ranking: phonetic keys of every
     content word (romanised first if Devanagari) and glossary concepts."""
+    if not config.enabled:
+        return []
     terms = []
     for t in L.content_terms(text):
         if t.isdigit():
             continue
-        latin = romanize(t) if L.is_devanagari(t) else t
+        latin = romanize(t) if config.romanize and L.is_devanagari(t) else t
         if len(latin) >= 3:
-            terms.append("p:" + phonetic_key(latin))
-    terms += ["c:" + c for c in concepts(text)]
+            terms.append("p:" + (phonetic_key(latin) if config.phonetic else latin.lower()))
+    if config.glossary:
+        terms += ["c:" + c for c in concepts(text)]
     return terms

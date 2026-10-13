@@ -1,8 +1,9 @@
 {
-  "_note": "Retrieval evaluation over sample_articles.json. relevant_urls lists every article that answers the query (both languages). Tags: ne/en = query language, xl = relevant articles include the other language, para = paraphrased, rom = romanised Nepali. 'heldout' questions were written after the glossary and deliberately use words it does not contain, to show how much of the cross-language gain is glossary fitting.",
+  "_note": "Retrieval evaluation over sample_articles.json. relevant_urls lists every article that answers the query (both languages). Tags: ne/en = query language, xl = relevant articles include the other language, para = paraphrased, rom = romanised Nepali. 'heldout' questions were written after the glossary and deliberately use words it does not contain, to show how much of the cross-language gain is glossary fitting. 'lang' is the query's language for the per-language breakdown.",
   "questions": [
     {
       "query": "सिन्धुपाल्चोक पहिरोमा कति जनाको मृत्यु भयो?",
+      "lang": "ne",
       "tags": [
         "ne",
         "xl"
@@ -16,6 +17,7 @@
     },
     {
       "query": "How many people died in the Sindhupalchok landslide?",
+      "lang": "en",
       "tags": [
         "en",
         "xl"
@@ -29,6 +31,7 @@
     },
     {
       "query": "Myagdi landslide deaths",
+      "lang": "en",
       "tags": [
         "en",
         "xl"
@@ -40,6 +43,7 @@
     },
     {
       "query": "petrol price increase per litre",
+      "lang": "en",
       "tags": [
         "en",
         "xl",
@@ -54,6 +58,7 @@
     },
     {
       "query": "पेट्रोलको मूल्य कति बढ्यो?",
+      "lang": "ne",
       "tags": [
         "ne",
         "xl"
@@ -67,6 +72,7 @@
     },
     {
       "query": "cooking gas cylinder price",
+      "lang": "en",
       "tags": [
         "en"
       ],
@@ -76,6 +82,7 @@
     },
     {
       "query": "एसईई नतिजा उत्तीर्ण प्रतिशत",
+      "lang": "ne",
       "tags": [
         "ne",
         "xl"
@@ -87,6 +94,7 @@
     },
     {
       "query": "SEE exam pass rate",
+      "lang": "en",
       "tags": [
         "en",
         "xl"
@@ -98,6 +106,7 @@
     },
     {
       "query": "नेपाल यूएई क्रिकेट जित",
+      "lang": "ne",
       "tags": [
         "ne",
         "xl"
@@ -109,6 +118,7 @@
     },
     {
       "query": "Nepal cricket win against UAE",
+      "lang": "en",
       "tags": [
         "en",
         "xl"
@@ -120,6 +130,7 @@
     },
     {
       "query": "पहिरोमा बेपत्ता व्यक्तिको खोजी",
+      "lang": "ne",
       "tags": [
         "ne",
         "xl"
@@ -132,6 +143,7 @@
     },
     {
       "query": "सिन्धुपाल्चोक सडक कालोपत्रे बजेट",
+      "lang": "ne",
       "tags": [
         "ne"
       ],
@@ -141,6 +153,7 @@
     },
     {
       "query": "landslide early warning system",
+      "lang": "en",
       "tags": [
         "en"
       ],
@@ -150,6 +163,7 @@
     },
     {
       "query": "sindhupalchok ma pahiro",
+      "lang": "rom",
       "tags": [
         "rom",
         "xl"
@@ -163,6 +177,7 @@
     },
     {
       "query": "petrol ko mulya badhyo",
+      "lang": "rom",
       "tags": [
         "rom",
         "xl"
@@ -176,6 +191,7 @@
     },
     {
       "query": "diesel kerosene price Rs 165",
+      "lang": "en",
       "tags": [
         "en",
         "xl"
@@ -187,6 +203,7 @@
     },
     {
       "query": "slope collapse buries homes after heavy downpour",
+      "lang": "en",
       "tags": [
         "en",
         "xl",
@@ -201,6 +218,7 @@
     },
     {
       "query": "गाडी चलाउनेहरूलाई महँगो पर्ने इन्धन",
+      "lang": "ne",
       "tags": [
         "ne",
         "xl",
@@ -215,6 +233,7 @@
     },
     {
       "query": "Kirtipur chase with balls to spare",
+      "lang": "en",
       "tags": [
         "en",
         "xl",
@@ -227,6 +246,7 @@
     },
     {
       "query": "school leaving exam outcome",
+      "lang": "en",
       "tags": [
         "en",
         "xl",
@@ -239,6 +259,7 @@
     },
     {
       "query": "bipad ma ghar puriyo",
+      "lang": "rom",
       "tags": [
         "rom",
         "xl",

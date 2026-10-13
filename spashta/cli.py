@@ -163,11 +163,21 @@ def cmd_eval(args) -> int:
         print(json.dumps(evaluate_signals(args.signals if args.signals != "samples" else sample_articles_path(), index),
                          ensure_ascii=False, indent=2))
         return 0
+    if args.ablate_xling:
+        from .evaluate import ablate_xling
+        return _emit(ablate_xling(index.store, index.embedder, questions, k=args.k), args.out)
     if args.compare:
-        print(json.dumps(compare_modes(index, questions, k=args.k), ensure_ascii=False, indent=2))
-        return 0
+        return _emit(compare_modes(index, questions, k=args.k), args.out)
     result = evaluate_retrieval(index, questions, k=args.k, records_out=args.records, mode=args.mode)
-    print(json.dumps({k: v for k, v in result.items() if k != "per_question" or args.verbose}, ensure_ascii=False, indent=2))
+    return _emit({k: v for k, v in result.items() if k != "per_question" or args.verbose or args.out}, args.out)
+
+
+def _emit(result: dict, out: str | None) -> int:
+    text = json.dumps(result, ensure_ascii=False, indent=2)
+    if out:
+        with open(out, "w", encoding="utf-8") as f:
+            f.write(text + "\n")
+    print(text)
     return 0
 
 
@@ -219,6 +229,8 @@ def build_parser() -> argparse.ArgumentParser:
     e.add_argument("--records", help="also write Anchor records (JSONL) here")
     e.add_argument("--mode", choices=["hybrid", "lexical", "dense", "xling"], default="hybrid")
     e.add_argument("--compare", action="store_true", help="ablation: lexical vs dense vs hybrid, with significance")
+    e.add_argument("--ablate-xling", action="store_true", help="remove romanisation, phonetic keys, glossary one at a time")
+    e.add_argument("--out", help="also write the result as JSON (for `spashta results`)")
     e.add_argument("--signals", nargs="?", const="samples", help="AUC of each signal against labelled articles (default: samples)")
     e.set_defaults(func=cmd_eval)
 
