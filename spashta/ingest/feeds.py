@@ -55,6 +55,31 @@ def _text(el: ET.Element, *names: str) -> str:
     return (c.text or "").strip() if c is not None else ""
 
 
+_ROOT_RE = re.compile(r"<([A-Za-z][\w:.-]*)[\s>/]")
+
+
+def parse_xml(text: str) -> Optional[ET.Element]:
+    """Parse a feed or sitemap, tolerating what real sites append after the
+    closing root tag (a PHP warning, a second document, tracking HTML).
+    None when it is not XML at all."""
+    data = text.lstrip()
+    try:
+        return ET.fromstring(data.encode("utf-8"))  # noqa: S314
+    except ET.ParseError:
+        pass
+    body = re.sub(r"<\?.*?\?>|<!--.*?-->|<!DOCTYPE[^>]*>", "", data, flags=re.S)
+    m = _ROOT_RE.search(body)
+    if not m:
+        return None
+    end = data.find(f"</{m.group(1)}>")
+    if end < 0:
+        return None
+    try:
+        return ET.fromstring(data[: end + len(m.group(1)) + 3].encode("utf-8"))  # noqa: S314
+    except ET.ParseError:
+        return None
+
+
 def looks_like_feed(content_type: str, text: str) -> bool:
     head = text.lstrip()[:500].lower()
     if any(t in content_type for t in ("rss", "atom", "feed+json")):
@@ -68,7 +93,9 @@ def parse_feed(text: str, base_url: str = "") -> list[FeedItem]:
     stripped = text.lstrip()
     if stripped.startswith("{"):
         return _parse_json_feed(stripped, base_url)
-    root = ET.fromstring(stripped.encode("utf-8"))  # noqa: S314
+    root = parse_xml(stripped)
+    if root is None:
+        return []
     lang = None
     channel = _child(root, "channel")
     if channel is not None:

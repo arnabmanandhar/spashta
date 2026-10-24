@@ -165,3 +165,21 @@ def test_deadline_caps_total_time():
     with pytest.raises(FetchError) as e:
         Fetcher(transport=web, delay_s=0, allow_private=True, deadline_s=0.3, retries=3).get("https://a.example/slow")
     assert e.value.kind == "timeout" and time.monotonic() - t < 2
+
+
+def test_one_broken_outlet_does_not_stop_the_others(fake_web, sample_index, monkeypatch):
+    import spashta.ingest as ingest
+    web, fetcher = fake_web({
+        "https://news.example/feed": ("application/rss+xml", fixture("feed_rss.xml")),
+        "https://news.example/2083/06/101180": ("text/html", fixture("article_ne.html")),
+    })
+
+    def broken(source, fetcher):
+        raise ValueError("unexpected page")
+
+    monkeypatch.setattr(ingest, "resolve", broken)
+    results = ingest_sources([Source(url="https://broken.example/"),
+                              Source(url="https://news.example/feed", kind="feed", endpoint="https://news.example/feed")],
+                             fetcher, sample_index, workers=2)
+    assert results[0].errors == ["ValueError: unexpected page"]
+    assert results[1].added == 1

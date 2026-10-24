@@ -5,12 +5,11 @@ Google News sitemap fields (title, language, publication date).
 
 from __future__ import annotations
 
-import xml.etree.ElementTree as ET  # noqa: S405 - expat limits entity expansion
 from dataclasses import dataclass, field
 from datetime import datetime
 
 from ..models import FeedItem
-from .feeds import _child, _local, _text, parse_date
+from .feeds import _child, _local, _text, parse_date, parse_xml
 
 
 @dataclass
@@ -26,8 +25,10 @@ def looks_like_sitemap(text: str) -> bool:
 
 
 def parse_sitemap(text: str) -> Sitemap:
-    root = ET.fromstring(text.lstrip().encode("utf-8"))  # noqa: S314
+    root = parse_xml(text)
     out = Sitemap()
+    if root is None:
+        return out
     if _local(root.tag) == "sitemapindex":
         for s in root:
             loc = _text(s, "loc") if _local(s.tag) == "sitemap" else ""

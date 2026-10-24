@@ -75,9 +75,10 @@ def collect_source(source: Source, fetcher: Fetcher, store, limit: int = 30, sin
             store.add_source(source)
         result.kind = source.kind
         items = backfill_items(source, fetcher, since, until, limit) if since else list_articles(source, fetcher, limit)
-    except FetchError as e:
-        result.errors.append(str(e))
-        store.mark_polled(source.url, str(e))
+    except Exception as e:  # noqa: BLE001 - one broken outlet must not stop the others
+        msg = str(e) if isinstance(e, FetchError) else f"{type(e).__name__}: {e}"
+        result.errors.append(msg)
+        store.mark_polled(source.url, msg)
         return result, []
     result.found = len(items)
     new: list[Article] = []
@@ -89,6 +90,9 @@ def collect_source(source: Source, fetcher: Fetcher, store, limit: int = 30, sin
             a = fetch_article(item.url, fetcher, item)
         except FetchError as e:
             result.errors.append(str(e))
+            continue
+        except Exception as e:  # noqa: BLE001 - a malformed page skips that article only
+            result.errors.append(f"{type(e).__name__}: {item.url}: {e}")
             continue
         new.append((item.url, a))
         store.mark_seen(item.url, a.id)
