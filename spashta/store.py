@@ -132,8 +132,11 @@ class Store:
 
     def seen(self, url: str) -> bool:
         """A listed URL already fetched, whether it became an article (maybe
-        under its canonical URL) or was skipped as too short."""
-        return self._one("SELECT 1 FROM seen WHERE url = ?", (url,)) is not None
+        under its canonical URL) or was skipped as too short. A URL whose
+        article never got stored (the run stopped before indexing) counts
+        as unseen, so the next run fetches it again."""
+        return self._one("SELECT 1 FROM seen s WHERE url = ? AND (s.article_id IS NULL OR "
+                         "EXISTS (SELECT 1 FROM articles a WHERE a.id = s.article_id))", (url,)) is not None
 
     def mark_seen(self, url: str, article_id: Optional[str]) -> None:
         with self._lock, self._db:

@@ -106,10 +106,14 @@ def cmd_ingest(args) -> int:
     sources = index.store.sources(enabled_only=True)
     since, until = parse_day(args.since), parse_day(args.until, end=True)
     limit = args.limit if args.limit is not None else (5000 if since else 30)
-    results = ingest_sources(sources, fetcher, index, limit=limit, workers=args.workers, since=since, until=until)
-    for s, r in zip(sources, results):
+    print(f"collecting {len(sources)} sources; each line below appears as one finishes", flush=True)
+
+    def done(s, r):
         print(f"{r.kind or '?':<8} found {r.found:>3} · added {r.added:>3} · skipped {r.skipped:>3}"
-              f" · errors {len(r.errors):>2}  {s.url}")
+              f" · errors {len(r.errors):>2}  {s.url}", flush=True)
+
+    results = ingest_sources(sources, fetcher, index, limit=limit, workers=args.workers, since=since, until=until,
+                             on_done=done)
     print(json.dumps(index.store.count()))
     failed = sum(bool(r.errors and not r.added) for r in results)
     return 1 if sources and failed == len(sources) else 0

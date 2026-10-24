@@ -24,3 +24,11 @@ def test_store_reads_and_writes_from_many_threads(tmp_path):
         t.join()
     assert not errors
     assert all(store.seen(f"https://example.com/{n}/199") for n in range(6))
+
+
+def test_seen_url_without_stored_article_is_fetched_again(tmp_path):
+    store = Store(tmp_path / "t.db")
+    store.mark_seen("https://example.com/a", "missing-id")  # run stopped before indexing
+    store.mark_seen("https://example.com/b", None)  # skipped as too short
+    assert not store.seen("https://example.com/a")
+    assert store.seen("https://example.com/b")

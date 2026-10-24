@@ -15,7 +15,8 @@ so polling is cheap.
 from __future__ import annotations
 
 import logging
-from concurrent.futures import ThreadPoolExecutor
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
@@ -89,15 +90,16 @@ def collect_source(source: Source, fetcher: Fetcher, store, limit: int = 30, sin
         except FetchError as e:
             result.errors.append(str(e))
             continue
-        new.append(a)
+        new.append((item.url, a))
         store.mark_seen(item.url, a.id)
     # Learn this site's repeated paragraphs from the new batch plus recent stored articles.
     known = [a.body for a in store.articles_from(source.host, limit=20)]
-    bp = boilerplate.learn([a.body for a in new] + known)
+    bp = boilerplate.learn([a.body for _, a in new] + known)
     kept = []
-    for a in new:
+    for url, a in new:
         a = boilerplate.strip(a, bp)
         if len(a.body) < MIN_BODY_CHARS:  # section page, paywall or video: nothing to analyse
+            store.mark_seen(url, None)  # remembered as skipped, not as a missing article
             result.skipped += 1
             continue
         kept.append(a)
@@ -115,14 +117,22 @@ def ingest_source(source: Source, fetcher: Fetcher, index, limit: int = 30) -> I
 
 
 def ingest_sources(sources: list[Source], fetcher: Fetcher, index, limit: int = 30, workers: int = 4,
-                   since: Optional[datetime] = None, until: Optional[datetime] = None) -> list[IngestResult]:
-    """Collect sources in parallel (Fetcher still spaces requests per host),
-    then index everything in one pass."""
+                   since: Optional[datetime] = None, until: Optional[datetime] = None,
+                   on_done: Optional[Callable[[Source, IngestResult], None]] = None) -> list[IngestResult]:
+    """Collect sources in parallel (Fetcher still spaces requests per host)
+    and index each one as soon as it finishes, so an interrupted run keeps
+    what it already fetched. Indexing stays on the calling thread."""
+    results: list[Optional[IngestResult]] = [None] * len(sources)
     with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
-        collected = list(pool.map(lambda s: collect_source(s, fetcher, index.store, limit, since, until), sources))
-    articles = [a for _, batch in collected for a in batch]
-    if articles:
-        index.add_many(articles)
-    for result, batch in collected:
-        result.added = len(batch)
-    return [r for r, _ in collected]
+        futures = {pool.submit(collect_source, s, fetcher, index.store, limit, since, until): i
+                   for i, s in enumerate(sources)}
+        for fut in as_completed(futures):
+            i = futures[fut]
+            result, batch = fut.result()
+            if batch:
+                index.add_many(batch)
+            result.added = len(batch)
+            results[i] = result
+            if on_done:
+                on_done(sources[i], result)
+    return [r for r in results if r is not None]
