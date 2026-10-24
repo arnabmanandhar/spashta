@@ -93,7 +93,19 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-_OPENER = urllib.request.build_opener(_NoRedirect)
+def _tls_context() -> ssl.SSLContext:
+    """Verify against Mozilla's CA bundle (certifi) when it is installed. The
+    Windows certificate store can hold stale roots that make a valid chain
+    fail as "certificate has expired"."""
+    try:
+        import certifi
+    except ImportError:
+        return ssl.create_default_context()
+    return ssl.create_default_context(cafile=certifi.where())
+
+
+_TLS = _tls_context()
+_OPENER = urllib.request.build_opener(_NoRedirect, urllib.request.HTTPSHandler(context=_TLS))
 
 
 def urllib_transport(url: str, headers: dict[str, str]) -> Response:
@@ -167,7 +179,7 @@ class _PinnedHTTPSConnection(http.client.HTTPSConnection):
     """TLS to a vetted IP, with the certificate checked against the hostname."""
 
     def __init__(self, host: str, ip: str, port: int, timeout: float):
-        super().__init__(host, port, timeout=timeout, context=ssl.create_default_context())
+        super().__init__(host, port, timeout=timeout, context=_TLS)
         self._ip = ip
 
     def connect(self) -> None:

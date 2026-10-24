@@ -60,6 +60,17 @@ class Store:
     def close(self) -> None:
         self._db.close()
 
+    # One connection is shared by the ingest worker threads, so reads take
+    # the lock too: sqlite3 raises InterfaceError on concurrent use.
+
+    def _all(self, sql: str, params: tuple = ()) -> list[sqlite3.Row]:
+        with self._lock:
+            return self._db.execute(sql, params).fetchall()
+
+    def _one(self, sql: str, params: tuple = ()) -> Optional[sqlite3.Row]:
+        with self._lock:
+            return self._db.execute(sql, params).fetchone()
+
     # ---------------------------------------------------------- sources
 
     def add_source(self, s: Source) -> None:
@@ -73,21 +84,21 @@ class Store:
     def sources(self, enabled_only: bool = False) -> list[Source]:
         q = "SELECT * FROM sources" + (" WHERE enabled = 1" if enabled_only else "") + " ORDER BY url"  # noqa: S608 - constant strings
         return [Source(url=r["url"], name=r["name"] or "", lang=r["lang"], kind=r["kind"] or "unresolved",
-                       endpoint=r["endpoint"], enabled=bool(r["enabled"])) for r in self._db.execute(q)]
+                       endpoint=r["endpoint"], enabled=bool(r["enabled"])) for r in self._all(q)]
 
     def mark_polled(self, url: str, error: Optional[str] = None) -> None:
         with self._lock, self._db:
             self._db.execute("UPDATE sources SET last_polled = datetime('now'), last_error = ? WHERE url = ?", (error, url))
 
     def source_status(self) -> list[dict]:
-        counts = {r[0]: r[1] for r in self._db.execute("SELECT source, COUNT(*) FROM articles GROUP BY source")}
-        rows = [dict(r) for r in self._db.execute("SELECT url, name, kind, last_polled, last_error FROM sources ORDER BY url")]
+        counts = {r[0]: r[1] for r in self._all("SELECT source, COUNT(*) FROM articles GROUP BY source")}
+        rows = [dict(r) for r in self._all("SELECT url, name, kind, last_polled, last_error FROM sources ORDER BY url")]
         for r in rows:
             r["articles"] = counts.get(host_of(r["url"]), 0)
         return rows
 
     def get_review(self, key: str) -> Optional[dict]:
-        r = self._db.execute("SELECT data FROM review_cache WHERE key = ?", (key,)).fetchone()
+        r = self._one("SELECT data FROM review_cache WHERE key = ?", (key,))
         return json.loads(r[0]) if r else None
 
     def put_review(self, key: str, data: dict) -> None:
@@ -101,11 +112,11 @@ class Store:
                              (report_id, url, json.dumps(data, ensure_ascii=False, default=str)))
 
     def get_report(self, report_id: str) -> Optional[dict]:
-        r = self._db.execute("SELECT data, created_at FROM reports WHERE id = ?", (report_id,)).fetchone()
+        r = self._one("SELECT data, created_at FROM reports WHERE id = ?", (report_id,))
         return {**json.loads(r[0]), "created_at": r[1]} if r else None
 
     def get_cached(self, url: str):
-        r = self._db.execute("SELECT etag, last_modified, body, content_type FROM http_cache WHERE url = ?", (url,)).fetchone()
+        r = self._one("SELECT etag, last_modified, body, content_type FROM http_cache WHERE url = ?", (url,))
         return (r[0], r[1], r[2], r[3] or "") if r else None
 
     def put_cached(self, url: str, etag, last_modified, body: bytes, content_type: str) -> None:
@@ -117,12 +128,12 @@ class Store:
     # --------------------------------------------------------- articles
 
     def has_article(self, article_id: str) -> bool:
-        return self._db.execute("SELECT 1 FROM articles WHERE id = ?", (article_id,)).fetchone() is not None
+        return self._one("SELECT 1 FROM articles WHERE id = ?", (article_id,)) is not None
 
     def seen(self, url: str) -> bool:
         """A listed URL already fetched, whether it became an article (maybe
         under its canonical URL) or was skipped as too short."""
-        return self._db.execute("SELECT 1 FROM seen WHERE url = ?", (url,)).fetchone() is not None
+        return self._one("SELECT 1 FROM seen WHERE url = ?", (url,)) is not None
 
     def mark_seen(self, url: str, article_id: Optional[str]) -> None:
         with self._lock, self._db:
@@ -145,22 +156,22 @@ class Store:
                        published=r["published"], author=r["author"], summary=r["summary"], fetched_at=r["fetched_at"])
 
     def article(self, article_id: str) -> Optional[Article]:
-        r = self._db.execute("SELECT * FROM articles WHERE id = ?", (article_id,)).fetchone()
+        r = self._one("SELECT * FROM articles WHERE id = ?", (article_id,))
         return self._article(r) if r else None
 
     def articles_from(self, source: str, limit: int = 20) -> list[Article]:
-        return [self._article(r) for r in self._db.execute(
+        return [self._article(r) for r in self._all(
             "SELECT * FROM articles WHERE source = ? ORDER BY fetched_at DESC LIMIT ?", (source, limit))]
 
     def articles(self, limit: int = 100) -> list[Article]:
-        return [self._article(r) for r in self._db.execute(
+        return [self._article(r) for r in self._all(
             "SELECT * FROM articles ORDER BY COALESCE(published, fetched_at) DESC LIMIT ?", (limit,))]
 
     def iter_articles(self, batch: int = 500):
         """Every stored article, oldest first, without loading the corpus at once."""
         last = ""
         while True:
-            rows = self._db.execute("SELECT * FROM articles WHERE id > ? ORDER BY id LIMIT ?", (last, batch)).fetchall()
+            rows = self._all("SELECT * FROM articles WHERE id > ? ORDER BY id LIMIT ?", (last, batch))
             if not rows:
                 return
             for r in rows:
@@ -168,7 +179,7 @@ class Store:
             last = rows[-1]["id"]
 
     def count(self) -> dict[str, int]:
-        one = lambda q: self._db.execute(q).fetchone()[0]  # noqa: E731
+        one = lambda q: self._one(q)[0]  # noqa: E731
         return {"sources": one("SELECT COUNT(*) FROM sources"), "articles": one("SELECT COUNT(*) FROM articles"),
                 "chunks": one("SELECT COUNT(*) FROM chunks")}
 
@@ -176,7 +187,7 @@ class Store:
 
     def chunks(self) -> tuple[list[Chunk], list[str], list[Optional[bytes]]]:
         """All chunks with the embedder name and raw vector of each."""
-        rows = self._db.execute("SELECT * FROM chunks ORDER BY article_id, idx").fetchall()
+        rows = self._all("SELECT * FROM chunks ORDER BY article_id, idx")
         chunks = [Chunk(id=r["id"], article_id=r["article_id"], idx=r["idx"], text=r["text"], lang=r["lang"]) for r in rows]
         return chunks, [r["embedder"] for r in rows], [r["vector"] for r in rows]
 
@@ -186,8 +197,8 @@ class Store:
                                  [(embedder, np.asarray(v, dtype=np.float32).tobytes(), cid) for cid, v in items])
 
     def article_titles(self) -> dict[str, str]:
-        return {r[0]: r[1] for r in self._db.execute("SELECT id, title FROM articles")}
+        return {r[0]: r[1] for r in self._all("SELECT id, title FROM articles")}
 
     def article_sources(self) -> dict[str, str]:
-        return {r[0]: r[1] for r in self._db.execute("SELECT id, source FROM articles")}
+        return {r[0]: r[1] for r in self._all("SELECT id, source FROM articles")}
 
