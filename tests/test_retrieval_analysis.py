@@ -110,7 +110,7 @@ def test_retrieval_eval_uses_anchor_metrics(sample_index, tmp_path):
     assert result["n"] == 21
     assert result["mean"]["recall_at_k"] >= 0.7
     assert set(result["by_tag"]) >= {"ne", "en", "xl", "rom"}
-    assert out.read_text().count("\n") == 21
+    assert out.read_text(encoding="utf-8").count("\n") == 21
 
 
 def test_mode_ablation_reports_significance(sample_index):
