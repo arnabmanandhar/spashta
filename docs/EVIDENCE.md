@@ -53,7 +53,10 @@ spashta --db data\live.db sources list          # check every outlet has article
 ```
 
 Then keep collecting for 3–4 weeks: some sites have no dated sitemaps,
-and polling catches what backfill misses. Schedule it every 3 hours:
+and polling catches what backfill misses. The simplest way is the
+scheduled GitHub Actions workflow, which does the backfill and the
+3-hourly polling with no computer left on: see [COLLECT.md](COLLECT.md).
+To run it at home instead, schedule it every 3 hours:
 
 ```powershell
 schtasks /Create /SC HOURLY /MO 3 /TN SpashtaIngest /TR "cmd /c cd /d D:\spashta && spashta --db data\live.db ingest >> data\ingest.log 2>&1"

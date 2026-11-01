@@ -126,6 +126,7 @@ The full runbook is [docs/EVIDENCE.md](docs/EVIDENCE.md).
 - [docs/REVIEW_LOG.md](docs/REVIEW_LOG.md): each critique-and-improve round
 - [docs/SIGNAL_RULES.md](docs/SIGNAL_RULES.md): the scoring rules in plain words
 - [docs/EVIDENCE.md](docs/EVIDENCE.md): the runbook from real data to published numbers
+- [docs/COLLECT.md](docs/COLLECT.md): collecting the corpus on a schedule with GitHub Actions
 - [docs/ANNOTATION.md](docs/ANNOTATION.md): the annotation guide (v2) and procedure
 - [docs/ERROR_ANALYSIS.md](docs/ERROR_ANALYSIS.md): template for real failure cases
 - [docs/DEPLOY.md](docs/DEPLOY.md): free public hosting and keeping keys safe
