@@ -116,16 +116,19 @@ def backfill(db: str, start: date, deadline: float) -> None:
 
 
 def summary(db: str, before: dict, after: dict) -> str:
+    from spashta.models import host_of
     con = sqlite3.connect(db)
     con.row_factory = sqlite3.Row
     try:
-        rows = con.execute(
-            "SELECT s.name, s.url, s.kind, s.last_polled, s.last_error, "
-            "(SELECT COUNT(*) FROM articles a WHERE a.source = s.url) AS n, "
-            "(SELECT MAX(published) FROM articles a WHERE a.source = s.url) AS newest "
-            "FROM sources s ORDER BY n DESC").fetchall()
+        sources = con.execute("SELECT name, url, kind, last_error FROM sources").fetchall()
+        # Articles are filed under the outlet's host, without "www.".
+        per_host = {r["source"]: (r["n"], r["newest"]) for r in con.execute(
+            "SELECT source, COUNT(*) AS n, MAX(published) AS newest FROM articles GROUP BY source")}
     finally:
         con.close()
+    rows = sorted(({**dict(s), "n": per_host.get(host_of(s["url"]), (0, None))[0],
+                    "newest": per_host.get(host_of(s["url"]), (0, None))[1]} for s in sources),
+                  key=lambda r: -r["n"])
     lines = [
         "### Spashta collection",
         "",
