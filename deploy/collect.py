@@ -12,7 +12,13 @@ this runs and saves it afterwards; this script only touches the file.
      feeds missed.
   5. Check the store and refuse to save one that lost articles.
 
+  6. With --run-min, keep polling every --poll-every-min minutes until the
+     run time is up. GitHub starts scheduled runs late or skips them when
+     it is busy, and a feed only lists its latest 10-50 articles, so long
+     runs back to back leave no gaps for a busy outlet to fall through.
+
 Usage: python deploy/collect.py DB [--seed SEED_DB] [--budget-min 240]
+                                   [--run-min 300 --poll-every-min 30]
 """
 
 from __future__ import annotations
@@ -148,9 +154,13 @@ def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("db")
     p.add_argument("--seed")
-    p.add_argument("--budget-min", type=float, default=240)
+    p.add_argument("--budget-min", type=float, default=240, help="minutes for backfill and catch-up")
+    p.add_argument("--run-min", type=float, default=0, help="keep polling until this many minutes have passed")
+    p.add_argument("--poll-every-min", type=float, default=30)
     args = p.parse_args()
-    deadline = time.monotonic() + args.budget_min * 60
+    began = time.monotonic()
+    deadline = began + args.budget_min * 60
+    run_end = began + args.run_min * 60
     start = date.fromisoformat(os.environ.get("BACKFILL_FROM", "2026-09-26"))
 
     from spashta.store import Store
@@ -163,13 +173,20 @@ def main() -> int:
         spashta(args.db, "sources", "seed")
 
     backfill(args.db, start, deadline)
-    poll = spashta(args.db, "ingest", "--workers", "6")
+    polls = [spashta(args.db, "ingest", "--workers", "6")]
 
     today = datetime.now(NEPAL).date().isoformat()
     if state(args.db, "catchup_on") != today and time.monotonic() < deadline:
         spashta(args.db, "ingest", "--since", (datetime.now(NEPAL).date() - timedelta(days=2)).isoformat(),
                 "--workers", "6")
         state(args.db, "catchup_on", today)
+
+    next_poll = time.monotonic() + args.poll_every_min * 60
+    while next_poll < run_end:
+        time.sleep(max(0.0, next_poll - time.monotonic()))
+        polls.append(spashta(args.db, "ingest", "--workers", "6"))
+        next_poll += args.poll_every_min * 60
+    print(f"{len(polls)} polls this run", flush=True)
 
     con = sqlite3.connect(args.db)
     try:
@@ -190,8 +207,8 @@ def main() -> int:
     if after["articles"] < before["articles"]:
         print(f"::error::store lost articles ({before['articles']} -> {after['articles']}); not saving it", flush=True)
         return 3
-    if poll != 0:
-        print("::warning::every outlet failed this poll; the store is saved, but check the outlets", flush=True)
+    if all(polls):
+        print("::warning::every outlet failed every poll this run; the store is saved, but check the outlets", flush=True)
         return 1
     return 0
 

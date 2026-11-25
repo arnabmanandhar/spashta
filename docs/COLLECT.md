@@ -1,14 +1,15 @@
 # Collecting without a computer left on
 
-`.github/workflows/collect.yml` runs ingest every 3 hours on GitHub's
-machines (free for public repositories). Each run:
+`.github/workflows/collect.yml` runs ingest on GitHub's machines (free for
+public repositories). A run starts every 3 hours and lasts about 5; the
+next one waits for it, so collection is continuous. Each run:
 
 1. downloads the store from the last run,
 2. backfills from sitemaps, three days at a time, until everything from
    2026-09-26 (`BACKFILL_FROM` in the workflow) to today is covered; a
    backfill too long for one run carries on in the next,
-3. polls every outlet's feed, and once a day re-reads the last two days
-   of sitemaps to catch what the feeds missed,
+3. polls every outlet's feed every 30 minutes, and once a day re-reads
+   the last two days of sitemaps to catch what the feeds missed,
 4. checks the store (SQLite integrity, no lost articles) and saves it.
 
 The store holds publishers' full text and the repository is public, so it
@@ -77,8 +78,9 @@ collection with **Actions → Collect corpus → ⋯ → Disable workflow**.
   site behind strict bot protection may refuse; the per-outlet table shows
   that as a last error and no new articles. If several outlets are
   blocked, use the VPS route in [DEPLOY.md](DEPLOY.md) instead.
-- Scheduled runs can start up to an hour late when GitHub is busy. Polling
-  every 3 hours with a daily sitemap catch-up leaves room for that.
+- GitHub starts scheduled runs late, or skips them, when it is busy (runs
+  12 hours apart were seen). Long runs that poll every 30 minutes, queued
+  back to back, make that harmless.
 - GitHub pauses schedules in a repository with no activity for 60 days.
-- A run is capped at about 5½ hours; the backfill stops after 4 and
+- A run is capped at about 5½ hours; the backfill stops after 3 and
   resumes next time, so nothing is lost to the cap.

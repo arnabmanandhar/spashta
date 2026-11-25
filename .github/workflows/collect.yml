@@ -1,7 +1,9 @@
 name: Collect corpus
 
-# Runs ingest every 3 hours on GitHub's machines, so nothing has to stay
-# switched on at home. The store (live.db) lives between runs as an
+# Collects on GitHub's machines, so nothing has to stay switched on at
+# home. A run starts every 3 hours and polls every 30 minutes for about 5
+# hours; the next run waits its turn, so polling is continuous even when
+# GitHub starts scheduled runs late. The store (live.db) lives between runs as an
 # encrypted asset on the "collector-data" release: the repository is
 # public and the store holds publishers' full text, so it is never saved
 # unencrypted. See docs/COLLECT.md for setup, seeding and downloading.
@@ -81,9 +83,10 @@ jobs:
         id: collect
         run: |
           set +e
-          budget=240; [ "${{ steps.restore.outputs.mode }}" = dry ] && budget=30
+          budget=180; run=300
+          [ "${{ steps.restore.outputs.mode }}" = dry ] && budget=30 && run=0
           seed="${{ steps.restore.outputs.seed }}"
-          python deploy/collect.py data/live.db --budget-min "$budget" ${seed:+--seed "$seed"}
+          python deploy/collect.py data/live.db --budget-min "$budget" --run-min "$run" --poll-every-min 30 ${seed:+--seed "$seed"}
           echo "code=$?" >> "$GITHUB_OUTPUT"
 
       - name: Save the store
