@@ -133,3 +133,44 @@ def test_release_refuses_text(tmp_path):
     pairs.write_text(json.dumps({"a": "x", "b": "y", "same_event": True, "note": "z" * 400}) + "\n", encoding="utf-8")
     with pytest.raises(ValueError, match="article text"):
         release.build_release(tmp_path / "snap", tmp_path / "rel", pairs=pairs)
+
+
+def test_backfill_walks_paged_sitemaps_in_page_order_and_stops_past_the_window(fake_web):
+    index = """<?xml version="1.0"?><sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<sitemap><loc>https://paged.example/sitemap-news.xml</loc></sitemap>
+<sitemap><loc>https://paged.example/sitemap-news.xml?p=2</loc></sitemap>
+<sitemap><loc>https://paged.example/sitemap-news.xml?p=3</loc></sitemap>
+<sitemap><loc>https://paged.example/sitemap-news.xml?p=4</loc></sitemap>
+<sitemap><loc>https://paged.example/sitemap-tags.xml</loc></sitemap>
+</sitemapindex>"""
+    web, fetcher = fake_web({
+        "https://paged.example/sitemap.xml": ("application/xml", index),
+        "https://paged.example/sitemap-news.xml": ("application/xml", _urlset(
+            ("https://paged.example/story/1004/", "2026-10-20"))),
+        "https://paged.example/sitemap-news.xml?p=2": ("application/xml", _urlset(
+            ("https://paged.example/story/1003/", "2026-10-05"), ("https://paged.example/story/1002/", "2026-10-01"))),
+        "https://paged.example/sitemap-news.xml?p=3": ("application/xml", _urlset(
+            ("https://paged.example/story/1001/", "2026-09-01"))),
+    })
+    since = datetime(2026, 9, 26, tzinfo=timezone.utc)
+    until = datetime(2026, 10, 10, tzinfo=timezone.utc)
+    items = backfill_items(Source(url="https://paged.example"), fetcher, since, until)
+    assert [i.url for i in items] == ["https://paged.example/story/1002", "https://paged.example/story/1003"]
+    assert "https://paged.example/sitemap-news.xml?p=4" not in web.requests  # p=3 was already older than the window
+
+
+def test_backfill_uses_the_wordpress_api_when_there_is_no_sitemap(fake_web):
+    from urllib.parse import urlencode
+    since = datetime(2026, 9, 26, tzinfo=timezone.utc)
+    until = datetime(2026, 9, 28, 23, 59, tzinfo=timezone.utc)
+    query = urlencode({"per_page": 100, "page": 1, "orderby": "date", "order": "asc", "after": since.isoformat(),
+                       "before": until.isoformat(), "_fields": "link,date_gmt,title"})
+    posts = json.dumps([
+        {"link": "https://wp.example/2026/09/2027001/a-story-about-the-rains", "date_gmt": "2026-09-26T04:00:00",
+         "title": {"rendered": "Rains &amp; floods"}},
+        {"link": "https://wp.example/category/news", "date_gmt": "2026-09-27T04:00:00", "title": {"rendered": "News"}},
+    ])
+    web, fetcher = fake_web({f"https://wp.example/wp-json/wp/v2/posts?{query}": ("application/json", posts)})
+    items = backfill_items(Source(url="https://wp.example"), fetcher, since, until)
+    assert [(i.url, i.title) for i in items] == [("https://wp.example/2026/09/2027001/a-story-about-the-rains", "Rains & floods")]
+    assert items[0].published == datetime(2026, 9, 26, 4, tzinfo=timezone.utc)

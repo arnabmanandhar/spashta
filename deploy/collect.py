@@ -35,6 +35,9 @@ from datetime import date, datetime, timedelta, timezone
 NEPAL = timezone(timedelta(hours=5, minutes=45))
 STATE = "CREATE TABLE IF NOT EXISTS collector_state (key TEXT PRIMARY KEY, value TEXT)"
 WINDOW_DAYS = 3
+# Bump the suffix when backfill learns to read more sites, so the next run
+# walks the whole window again (articles already stored are skipped).
+BACKFILL_KEY = "backfilled_until_v2"
 # Tables merged from a seed, keyed so existing rows win.
 MERGE = {
     "sources": "url, name, lang, kind, endpoint, enabled, last_polled, last_error",
@@ -101,7 +104,7 @@ def merge_seed(db: str, seed: str) -> None:
 
 
 def backfill(db: str, start: date, deadline: float) -> None:
-    done = state(db, "backfilled_until")
+    done = state(db, BACKFILL_KEY)
     cursor = date.fromisoformat(done) + timedelta(days=1) if done else start
     today = datetime.now(NEPAL).date()
     while cursor <= today:
@@ -116,9 +119,9 @@ def backfill(db: str, start: date, deadline: float) -> None:
         # catch-up and the feeds keep covering recent days, and the summary
         # shows any outlet that is falling behind.
         if end < today:
-            state(db, "backfilled_until", end.isoformat())
+            state(db, BACKFILL_KEY, end.isoformat())
         cursor = end + timedelta(days=1)
-    state(db, "backfilled_until", (today - timedelta(days=1)).isoformat())
+    state(db, BACKFILL_KEY, (today - timedelta(days=1)).isoformat())
 
 
 def summary(db: str, before: dict, after: dict) -> str:
@@ -139,7 +142,7 @@ def summary(db: str, before: dict, after: dict) -> str:
         "### Spashta collection",
         "",
         f"Articles: **{after['articles']}** ({after['articles'] - before['articles']:+d} this run) · "
-        f"sources: {after['sources']} · backfilled until: {state(db, 'backfilled_until') or '-'}",
+        f"sources: {after['sources']} · backfilled until: {state(db, BACKFILL_KEY) or '-'}",
         "",
         "| Outlet | Articles | Newest | Kind | Last error |",
         "|---|---:|---|---|---|",
