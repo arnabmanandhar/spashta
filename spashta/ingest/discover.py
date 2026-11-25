@@ -15,16 +15,18 @@ sitemap already says about them) for the resolved source.
 
 from __future__ import annotations
 
+import html
+import json
 import re
 from calendar import monthrange
 from datetime import datetime, timezone
 from typing import Optional
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urlencode, urljoin, urlparse
 
 from ..fetch import Fetcher, FetchError
 from ..models import FeedItem, Source, canonical_url, host_of
 from .extract import parse_page
-from .feeds import looks_like_feed, parse_feed
+from .feeds import looks_like_feed, parse_date, parse_feed
 from .sitemap import looks_like_sitemap, parse_sitemap, sitemap_items
 
 COMMON_FEED_PATHS = ("/feed", "/rss", "/rss.xml", "/feed.xml", "/atom.xml", "/index.xml")
@@ -137,13 +139,71 @@ def _overlaps(period: Optional[tuple[datetime, datetime]], since: datetime, unti
     return period is None or (period[0] <= until and period[1] >= since)
 
 
+_PAGE_PARAM = re.compile(r"[?&](?:p|page|paged)=(\d+)")
+WP_MAX_PAGES = 60
+
+
+def _base(url: str) -> str:
+    return url.split("?", 1)[0]
+
+
+def _order_children(children: list[str]) -> tuple[list[str], set[str]]:
+    """Child sitemaps in the order to walk them, and the bases that are
+    paged (sitemap-news.xml, then ?p=2, ?p=3, ...). Paged sitemaps list
+    newest first and hold no dates in their names, so they are walked in
+    page order, ahead of the rest, until a page is older than the window.
+    Other children keep the old rule: newest last in most indexes."""
+    groups: dict[str, list[str]] = {}
+    for c in children:
+        groups.setdefault(_base(c), []).append(c)
+    paged = {b for b, cs in groups.items() if len(cs) > 1 and any(_PAGE_PARAM.search(c) for c in cs)}
+
+    def page_no(url: str) -> int:
+        m = _PAGE_PARAM.search(url)
+        return int(m.group(1)) if m else 1
+
+    first = sorted((c for c in children if _base(c) in paged), key=lambda c: (_base(c), page_no(c)))
+    return first + [c for c in reversed(children) if _base(c) not in paged], paged
+
+
+def wordpress_items(source: Source, fetcher: Fetcher, since: datetime, until: datetime,
+                    limit: int = 5000) -> list[FeedItem]:
+    """Posts in the window from a WordPress site's REST API, for sites that
+    publish no usable sitemap. Returns [] for sites that are not WordPress
+    or have the API switched off."""
+    base = source.url.rstrip("/")
+    out: list[FeedItem] = []
+    for page in range(1, WP_MAX_PAGES + 1):
+        query = urlencode({"per_page": 100, "page": page, "orderby": "date", "order": "asc",
+                           "after": since.astimezone(timezone.utc).isoformat(),
+                           "before": until.astimezone(timezone.utc).isoformat(), "_fields": "link,date_gmt,title"})
+        try:
+            posts = json.loads(fetcher.get(f"{base}/wp-json/wp/v2/posts?{query}").text)
+        except (FetchError, ValueError):
+            break  # not WordPress, API off, or past the last page (WordPress answers 400)
+        if not isinstance(posts, list) or not posts:
+            break
+        for post in posts:
+            link = post.get("link") if isinstance(post, dict) else None
+            if not link or not looks_like_article(link, source.host):
+                continue
+            title = post.get("title")
+            out.append(FeedItem(url=canonical_url(link),
+                                title=html.unescape(title.get("rendered", "")) if isinstance(title, dict) else "",
+                                published=parse_date(post.get("date_gmt"))))
+        if len(posts) < 100 or len(out) >= limit:
+            break
+    return out[:limit]
+
+
 def backfill_items(source: Source, fetcher: Fetcher, since: datetime, until: Optional[datetime] = None,
                    limit: int = 5000, max_sitemaps: int = 80) -> list[FeedItem]:
     """Article URLs published between since and until, for building a corpus
     that reaches back weeks. Feeds only list the last day or two, so this
     walks the site's sitemaps, skipping child sitemaps that by their lastmod
     or the date in their name can't hold anything in the window. Sites
-    without a sitemap fall back to the feed or the home page (recent only)."""
+    whose sitemaps hold nothing in the window try the WordPress API, then
+    fall back to the feed or the home page (recent only)."""
     until = until or datetime.now(timezone.utc)
     if source.kind == "sitemap" and source.endpoint:
         roots = [source.endpoint]
@@ -151,9 +211,11 @@ def backfill_items(source: Source, fetcher: Fetcher, since: datetime, until: Opt
         roots = fetcher.sitemaps_from_robots(source.url) + [urljoin(source.url, p) for p in COMMON_SITEMAPS]
     queue, seen_maps, fetched, parsed = list(dict.fromkeys(roots)), set(), 0, 0
     found: dict[str, FeedItem] = {}
+    paged: set[str] = set()
+    done_bases: set[str] = set()  # paged sitemaps already walked past the window
     while queue and fetched < max_sitemaps and len(found) < limit:
         url = queue.pop(0)
-        if url in seen_maps:
+        if url in seen_maps or _base(url) in done_bases:
             continue
         seen_maps.add(url)
         try:
@@ -165,10 +227,14 @@ def backfill_items(source: Source, fetcher: Fetcher, since: datetime, until: Opt
             parsed += 1
         except (FetchError, ValueError, SyntaxError):  # ET.ParseError is a SyntaxError
             continue
-        for child in reversed(sm.children):  # newest last in most indexes
-            lastmod = sm.child_lastmod.get(child)
-            if (lastmod is None or lastmod >= since) and _overlaps(_url_period(child), since, until):
-                queue.append(child)
+        children, new_paged = _order_children(sm.children)
+        paged |= new_paged
+        wanted = [c for c in children if (sm.child_lastmod.get(c) is None or sm.child_lastmod[c] >= since)
+                  and _overlaps(_url_period(c), since, until)]
+        queue = [c for c in wanted if _base(c) in new_paged] + queue + [c for c in wanted if _base(c) not in new_paged]
+        dated = [i.published for i in sm.entries if i.published]
+        if _base(url) in paged and dated and len(dated) == len(sm.entries) and max(dated) < since:
+            done_bases.add(_base(url))
         for item in sm.entries:
             when = item.published
             if when is not None and not since <= when <= until:
@@ -176,6 +242,10 @@ def backfill_items(source: Source, fetcher: Fetcher, since: datetime, until: Opt
             if when is None and not (_url_period(item.url) and _overlaps(_url_period(item.url), since, until)):
                 continue
             found.setdefault(canonical_url(item.url), item.model_copy(update={"url": canonical_url(item.url)}))
+    if not found:
+        wp = wordpress_items(source, fetcher, since, until, limit)
+        if wp:
+            return sorted(wp, key=lambda i: i.published.timestamp() if i.published else 0)
     if not parsed:
         recent = list_articles(source, fetcher, limit)
         return [i for i in recent if i.published is None or since <= i.published <= until][:limit]
